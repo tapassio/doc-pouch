@@ -115,9 +115,9 @@ export default class NetworkManager{
 
         this.expressApp.post("/users/login", (req:Request, res:Response) => {
             if (this.validator.validate("userLogin", req.body)) {
-                this.dataManager.getUserByName(req.body.name)
+                this.dataManager.validateUser(req.body.name, req.body.password)
                     .then((user: I_UserEntry) => {
-                        if (user && user.password === req.body.password) {
+                        if (user) {
                             let token = jwt.sign({id: user._id}, JWTOptions.secret, {
                                 algorithm: "HS512",
                                 expiresIn: "4h",
@@ -127,11 +127,9 @@ export default class NetworkManager{
                         } else
                             res.status(403).json({error: "Invalid user or password"});
                     })
-                    .catch((error) => {
-                        // Handle the "User not found" rejection
-                        res.status(404).json({error: error});
-                    });
-
+                    .catch((reason) => {
+                        res.status(500).json({error: reason});
+                    })
             }
             else
                 res.status(503).json({error: "Invalid user data"});

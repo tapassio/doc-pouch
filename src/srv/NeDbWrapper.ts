@@ -1,7 +1,7 @@
 import Datastore from 'nedb';
 import winston from "winston";
 import fs from "fs";
-
+import bcrypt from "bcrypt"
 import type {
     I_UserEntry,
     I_DocumentEntry,
@@ -10,11 +10,13 @@ import type {
     I_DocumentCreation, I_StructureCreation, I_DocumentCreationOwned, I_DocumentQuery
 } from "../types.ts";
 
+
 export default class NeDbWrapper {
     users: CustomStore
     structures: CustomStore
     documents: CustomStore
     logger: winston.Logger
+    saltRounds: number = 10;
 
     constructor(winstonLogger: winston.Logger) {
         this.logger = winstonLogger;
@@ -37,69 +39,66 @@ export default class NeDbWrapper {
             // No users in database yet?
             if (counter < 1) {
                 // Create default admin
-                let defaultAdminUser: I_UserCreation = {
+                this.createUser({
                     password: "adminSecret",
                     name: "admin",
                     isAdmin: true,
-                }
-
-                this.users.add(defaultAdminUser).then((user) => {
-                    this.logger.info(`Created new admin account: ${JSON.stringify(user)}`);
-                });
-
-                this.documents.count({}).then((counter) => {
-                    // No documents in database yet?
-                    if (counter < 1) {
-                        // Create demo document
-                        this.getAdminUser().then((admin) => {
-                            if (admin._id){
-                                let defaultDocument: I_DocumentCreationOwned = {
-                                    title: "Demo Document",
-                                    owner: admin._id,
-                                    description: "This is just a demo, delete when you don't need it anymore",
-                                    subType: 0,
-                                    type: 1,
-                                    content: [{
-                                        label: "This is a demo document not following any document structure",
-                                        importance: 0
-                                    }]
-                                }
-
-                                this.documents.add(defaultDocument).then((document) => {
-                                    this.logger.info(`Created new document: ${JSON.stringify(defaultDocument)}`);
-                                });
-
-                                this.structures.count({}).then((counter) => {
-                                    // No structures in database yet?
-                                    if (counter < 1) {
-                                        // Create demo structure
-                                        this.getAdminUser().then((admin) => {
-                                            if (admin._id){
-                                                let defaultStructure: I_StructureEntry = {
-                                                    _id: "tt5vo04DN3jm8Bqe",
-                                                    description: "This is a demo structure.",
-                                                    name: "City Info",
-                                                    fields: [
-                                                        {
-                                                            name: "City name",
-                                                            type: "string",
-                                                        },
-                                                        {
-                                                            name: "# of inhabitants",
-                                                            type: "number"
-                                                        }
-                                                    ]
-                                                }
-                                                this.structures.add(defaultStructure).then((structure) => {
-                                                    this.logger.info(`Created new structure: ${JSON.stringify(structure)}`);
-                                                });
-                                            }
-                                        })
+                }).then((addedUser) => {
+                    this.logger.info(`Created new admin user: ${JSON.stringify(addedUser)}`);
+                    this.documents.count({}).then((counter) => {
+                        // No documents in database yet?
+                        if (counter < 1) {
+                            // Create demo document
+                            this.getAdminUser().then((admin) => {
+                                if (admin._id){
+                                    let defaultDocument: I_DocumentCreationOwned = {
+                                        title: "Demo Document",
+                                        owner: admin._id,
+                                        description: "This is just a demo, delete when you don't need it anymore",
+                                        subType: 0,
+                                        type: 1,
+                                        content: [{
+                                            label: "This is a demo document not following any document structure",
+                                            importance: 0
+                                        }]
                                     }
-                                })
-                            }
-                        })
-                    }
+
+                                    this.documents.add(defaultDocument).then((document) => {
+                                        this.logger.info(`Created new document: ${JSON.stringify(defaultDocument)}`);
+                                    });
+
+                                    this.structures.count({}).then((counter) => {
+                                        // No structures in database yet?
+                                        if (counter < 1) {
+                                            // Create demo structure
+                                            this.getAdminUser().then((admin) => {
+                                                if (admin._id){
+                                                    let defaultStructure: I_StructureEntry = {
+                                                        _id: "tt5vo04DN3jm8Bqe",
+                                                        description: "This is a demo structure.",
+                                                        name: "City Info",
+                                                        fields: [
+                                                            {
+                                                                name: "City name",
+                                                                type: "string",
+                                                            },
+                                                            {
+                                                                name: "# of inhabitants",
+                                                                type: "number"
+                                                            }
+                                                        ]
+                                                    }
+                                                    this.structures.add(defaultStructure).then((structure) => {
+                                                        this.logger.info(`Created new structure: ${JSON.stringify(structure)}`);
+                                                    });
+                                                }
+                                            })
+                                        }
+                                    })
+                                }
+                            })
+                        }
+                    })
                 })
             }
         })
@@ -164,17 +163,31 @@ export default class NeDbWrapper {
                 if (count > 0)
                     reject("User name already exists");
                 else{
-                    this.users.query({})
-                        .then((allUsers) => {
-                            this.users.add({
-                                email: newUser.email, name: newUser.name, password: newUser.password, isAdmin: newUser.isAdmin
-                            })
-                                .then((result) => {
-                                    this.logger.info("Created new user account: " + JSON.stringify(newUser));
-                                    resolve(result as I_UserEntry);
-                                });
+                    bcrypt.hash(newUser.password, this.saltRounds).then((hash:string) => {
+                        this.users.add({
+                            email: newUser.email, name: newUser.name, password: hash, isAdmin: newUser.isAdmin
                         })
-
+                            .then((result) => {
+                                this.logger.info("Created new user account: " + JSON.stringify(newUser));
+                                resolve(result as I_UserEntry);
+                            })
+                    })
+                }
+            })
+        })
+    }
+    validateUser(username: string, password: string): Promise<I_UserEntry> {
+        return new Promise((resolve, reject) => {
+            this.users.query({name: username}).then((result) => {
+                if (result.length > 0) {
+                    const user = result[0] as I_UserEntry;
+                    bcrypt.compare(password, user.password).then((validated) => {
+                        if (validated) {
+                            resolve(user);
+                        } else {
+                            reject("Invalid password");
+                        }
+                    })
                 }
             })
         })
