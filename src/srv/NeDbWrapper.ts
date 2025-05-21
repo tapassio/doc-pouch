@@ -169,6 +169,7 @@ export default class NeDbWrapper {
                         })
                             .then((result) => {
                                 this.logger.info("Created new user account: " + JSON.stringify(newUser));
+
                                 resolve(result as I_UserEntry);
                             })
                     })
@@ -195,13 +196,15 @@ export default class NeDbWrapper {
 
     removeUser(userID: string) {
         return new Promise((resolve, reject) => {
-            this.users.remove({_id: userID}).then((numRemoved: number) => {
-                if (numRemoved > 0) {
-                    this.logger.info("Removed user:" + JSON.stringify(userID));
-                    resolve(numRemoved);
-                }
-                else
-                    reject("User not found");
+            this.documents.remove({owner: userID}).then((numRemoved: number) => {
+                this.users.remove({_id: userID}).then((numRemoved: number) => {
+                    if (numRemoved > 0) {
+                        this.logger.info("Removed user:" + JSON.stringify(userID));
+                        resolve(numRemoved);
+                    }
+                    else
+                        reject("User not found");
+                })
             })
         })
     }
@@ -331,7 +334,7 @@ export default class NeDbWrapper {
         });
     }
 
-    removeStructure(structureID: number, requestingUserID: string) : Promise<number> {
+    removeStructure(structureID: string, requestingUserID: string) : Promise<number> {
         return new Promise((resolve, reject) => {
             this.isAdmin(requestingUserID).then((isAdmin) => {
                 if (!isAdmin) {

@@ -4,11 +4,13 @@ import expressWs from 'express-ws';
 import path, {dirname} from 'path';
 import {fileURLToPath} from 'url';
 import cors from 'cors';
-import type {I_UserEntry} from "../types.ts";
+import type {I_UserEntry, I_UserUpdate} from "../types.ts";
 import NeDbWrapper from "./NeDbWrapper.js";
 import winston from "winston";
 import jwt from "jsonwebtoken"
 import SchemaValidator from "./SchemaValidator.js";
+import IoSocketServer from "./IoSocketServer.ts";
+import * as http from "node:http";
 
 const JWTOptions = {
     secret: "ThisIsMyVeryOwnAndCreativeSecret",
@@ -18,9 +20,10 @@ const JWTOptions = {
 export default class NetworkManager{
     corsOptions: any;
     port: number;
-    expressApp: express.Application;
-    wsInstance: expressWs.Application;
-    private dataManager: NeDbWrapper;
+    private readonly expressApp: express.Application;
+    dataManager: NeDbWrapper;
+    private socketServer: IoSocketServer
+    webServer: http.Server
     logger: winston.Logger
     validator: SchemaValidator
 
@@ -29,53 +32,17 @@ export default class NetworkManager{
         this.port = port;
         this.expressApp = express();
         expressWs(this.expressApp)
-        this.wsInstance = this.expressApp as unknown as expressWs.Application;
         this.dataManager = dataManager;
         this.logger = logger;
         this.validator = new SchemaValidator(logger);
-        this.initialize();
-    }
-
-    private initialize(): void {
-        this.wsInstance.ws('/subscribe', (ws, req) => {
-            // 'ws' is the WebSocket connection
-            // 'req' is the request object
-            console.log('WebSocket connection established');
-
-            // Handle incoming messages
-            ws.on('message', (msg) => {
-                try {
-                    const data = JSON.parse(msg.toString());
-
-                    switch (data.type) {
-                        case 'ping':
-                            ws.send(JSON.stringify({type: 'pong', timestamp: Date.now()}));
-                            break;
-                        case 'request':
-                            // Handle various request types
-                            break;
-                        default:
-                            ws.send(JSON.stringify({type: 'error', message: 'Unknown message type'}));
-                    }
-                } catch (err) {
-                    console.error('Error processing message:', err);
-                    ws.send(JSON.stringify({type: 'error', message: 'Invalid message format'}));
-                }
-            });
-
-            // Handle connection closing
-            ws.on('close', () => {
-                console.log('WebSocket connection closed');
-            });
-            ws.send(JSON.stringify({type: 'connected', message: 'Connection established'}));
-        });
-
-        const webServer = this.expressApp.listen(this.port, () => {
+        this.webServer = this.expressApp.listen(this.port, () => {
             this.logger.log("info", "Server is running on http://localhost:" + this.port);
         });
+        this.socketServer = new IoSocketServer(this, JWTOptions)
+        this.initializeExpress();
+    }
 
-        //TODO websocket connection for real-time updates
-
+    private initializeExpress(): void {
         let myDirname = dirname(fileURLToPath(import.meta.url));
         this.expressApp.use(express.static(path.join(myDirname, 'vue')));
         this.expressApp.use(express.json());
@@ -99,6 +66,7 @@ export default class NetworkManager{
                     if (isAdmin) {
                         this.dataManager.createUser(req.body)
                             .then((newUser) => {
+                                this.socketServer.sendEventToAdmins("newUser", {newUser: newUser});
                                 this.logger.info("New user created:", newUser);
                                 res.status(200).json(newUser);
                             })
@@ -151,7 +119,7 @@ export default class NetworkManager{
                             return res.status(401).json({error: "Not authorized to update this user"});
                     }
 
-                    const updateData: any = {};
+                    const updateData: I_UserUpdate = {_id: req.params.userID};
                     if (req.body.name) updateData.name = req.body.name;
                     if (req.body.password) updateData.password = req.body.password;
                     if (req.body.email) updateData.email = req.body.email;
@@ -163,8 +131,10 @@ export default class NetworkManager{
                                 res.status(204).json({error: "User not found"});
                             } else if (numUpdated > 1)
                                 res.status(500).json({error: "Multiple users with the same ID found"});
-                            else
+                            else {
+                                this.socketServer.sendEventToAdmins("changedUser",{changedUser: updateData})
                                 res.status(200).json({message: "User has been successfully updated"});
+                            }
                         })
                         .catch((error) => {
                             if (error.message.includes("not found")) {
@@ -185,6 +155,7 @@ export default class NetworkManager{
                     return res.status(401).json({ error: "Not authorized to remove this user" });
                 else {
                     this.dataManager.removeUser(req.params.userID).then(() => {
+                        this.socketServer.sendEventToAdmins("removedUser", {removedID: req.params.userID})
                         res.status(200).json({message: "User has been successfully removed"});
                     }).catch((error) => {
                         res.status(500).json({error: error.message});
@@ -227,6 +198,8 @@ export default class NetworkManager{
             if (this.validator.validate("documentCreation", req.body)) {
                 this.dataManager.createDocument(req.body, req.userid)
                     .then((document) => {
+                        this.socketServer.sendEventToUser(req.userid, "newDocument", {newDocument: document});
+                        this.logger.info("New document created:", document);
                         res.status(200).json(document);
                     })
                     .catch((error) => {
@@ -242,6 +215,7 @@ export default class NetworkManager{
                 this.dataManager.updateDocument(req.params.documentID, req.body, req.userid)
                     .then((numUpdated) => {
                         if (numUpdated > 0) {
+                            this.socketServer.sendEventToUser(req.userid, "changedDocument", {changedDocument: req.body});
                             res.status(200).json({message: "Document updated successfully"});
                         } else {
                             res.status(404).json({error: "Document not found"});
@@ -264,6 +238,8 @@ export default class NetworkManager{
                 .then((numRemoved) => {
                     if (numRemoved > 0) {
                         res.status(200).json({message: "Document removed successfully"});
+                        this.socketServer.sendEventToUser(req.userid, "removedDocument", {removedID: req.params.documentID});
+                        this.logger.info("Document removed:", req.params.documentID);
                     } else {
                         res.status(404).json({error: "Document not found"});
                     }
@@ -292,7 +268,8 @@ export default class NetworkManager{
             if (this.validator.validate("structureCreation", req.body)) {
                 this.dataManager.createStructure(req.body, req.userid)
                     .then((structure) => {
-                        delete structure.userid;
+                        this.socketServer.sendEventToAdmins("newStructure", {newStructure: structure});
+                        this.logger.info("New structure created:", structure);
                         res.status(200).json(structure);
                     })
                     .catch((error) => {
@@ -314,6 +291,8 @@ export default class NetworkManager{
                     .then((numUpdated) => {
                         if (numUpdated > 0) {
                             res.status(200).json({message: "Structure updated successfully"});
+                            this.socketServer.sendEventToAdmins("changedStructure", {changedStructure: req.body});
+                            this.logger.info("Structure updated:", req.body);
                         } else {
                             res.status(404).json({error: "Structure not found"});
                         }
@@ -331,11 +310,13 @@ export default class NetworkManager{
         });
 
         this.expressApp.delete("/structures/remove/:structureID", this.authenticateJWT.bind(this), (req, res) => {
-            const structureID = parseInt(req.params.structureID);
+            const structureID = req.params.structureID;
             this.dataManager.removeStructure(structureID, req.userid)
                 .then((numRemoved) => {
                     if (numRemoved > 0) {
                         res.status(200).json({message: "Structure removed successfully"});
+                        this.socketServer.sendEventToUser(req.userid, "removedStructure", {removedID: structureID})
+                        this.logger.info("Structure removed:", structureID);
                     } else {
                         res.status(404).json({error: "Structure not found"});
                     }
