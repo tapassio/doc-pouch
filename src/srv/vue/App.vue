@@ -10,6 +10,7 @@ import StructurePad from "./components/StructurePad.vue";
 import DocumentPad from "./components/DocumentPad.vue";
 import StructureDisplay from "./components/StructureDisplay.vue";
 import docPouchLogo from './assets/docPouch.png';
+import AboutDialog from "./components/AboutDialog.vue";
 
 enum DisplayComponent {
   documentViewer,
@@ -27,7 +28,7 @@ const apiClient = new DbPouchClient(window.location.href.slice(0, window.locatio
 const isLoggedIn = computed(() => authToken.value !== null);
 const isAdmin = ref(false);
 const showLoginDialog = ref(true)
-console.log(window.location.href.slice(0, window.location.href.lastIndexOf('/')));
+const showAboutDialog = ref(false)
 let loadedDocument = ref<I_DocumentEntry | undefined>(undefined);
 let loadedUser = ref<I_UserEntry | undefined>(undefined);
 let loadedStructure = ref<I_DataStructure | undefined>(undefined);
@@ -262,6 +263,7 @@ function handleApiError(error: unknown, context: string = "API operation") {
             max-width="40"
             contain
             class="mr-2 ml-3"
+            @click="showAboutDialog = true"
         ></v-img>
 
         <v-app-bar-title>DocPouch Administration</v-app-bar-title>
@@ -365,12 +367,9 @@ function handleApiError(error: unknown, context: string = "API operation") {
           </div>
         </div>
       </v-footer>
-      <LoginDialog
-          v-model:show="showLoginDialog"
-          :api-client="apiClient"
-          @login-success="handleLoginSuccess"
-          @update:show="handleDialogUpdate"
-      />
+      <LoginDialog v-model:show="showLoginDialog" :api-client="apiClient" @login-success="handleLoginSuccess"
+          @update:show="handleDialogUpdate"/>
+      <AboutDialog :show="showAboutDialog" @close="showAboutDialog = false" />
     </v-main>
   </v-app>
 </template>
