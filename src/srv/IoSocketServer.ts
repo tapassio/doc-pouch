@@ -1,14 +1,13 @@
 import {Server, Socket} from "socket.io";
 import type {I_Client, I_WsMessage} from "../types.ts";
 import type NetworkManager from "./NetworkManager.ts";
-import * as http from "node:http";
 import jwt from "jsonwebtoken";
 
 export default class IoSocketServer {
     private ioSocket: Server;
     private wsClientList: I_Client[]
     private networkManager: NetworkManager;
-    private JWTOptions
+    private JWTOptions: {secret: string, algorithm: string};
 
     constructor(networkManager: NetworkManager, JWTOptions: {secret: string, algorithm: string}) {
         this.wsClientList = [];
@@ -18,45 +17,72 @@ export default class IoSocketServer {
             cors: {
                 origin: "*"
             }
-        })
+        });
 
-        this.ioSocket.use(this.authMiddleware);
+        this.ioSocket.use((socket, next) => this.authMiddleware(socket, next));
 
         this.ioSocket.on('connection', (socket) => {
             let client = this.getClientBySocketID(socket.id);
             if (!client) {
-                console.log("Unknown client connected: ", socket.id);
+                this.networkManager.logger.error("Unknown client connected: ", socket.id);
             }
             else {
-                console.log('A user connected:', socket.id);
+                this.networkManager.logger.info("Client connected: ", socket.id);
 
-                this.ioSocket.on('disconnect', () => {
-                    console.log('User disconnected:', socket.id);
+                socket.on('disconnect', () => {
+                    this.networkManager.logger.info("Client disconnected: ", socket.id);
                     this.wsClientList = this.wsClientList.filter(client => client.socket.id !== socket.id);
                 });
 
-                this.ioSocket.on("subscribe", (command: string) => {
+                socket.on("subscribe", () => {
                     client.isSubscribed = true;
                     this.sendEventToClient(client, "confirmSubscription")
                 });
 
-                this.ioSocket.on("unsubscribe", (command: string) => {
+                socket.on("unsubscribe", () => {
                     client.isSubscribed = false;
                     this.sendEventToClient(client, "confirmUnsubscription")
                 });
 
-                this.ioSocket.on("heartbeatPong", (command: string) => {
+                socket.on("heartbeatPong", () => {
                     client.lastPongReceived = Date.now();
-                })
+                });
             }
         });
+
+        // Heartbeat check interval
+        setInterval(() => {
+            let now = Date.now();
+            for (let i = this.wsClientList.length - 1; i >= 0; i--) {
+                const client = this.wsClientList[i];
+                
+                if (client.lastPingSent < now - 60000) {
+                    client.lastPingSent = now;
+                    try {
+                        this.ioSocket.to(client.socket.id).emit("heartbeatPing");
+                    } catch (err) {
+                        this.networkManager.logger.error("Error sending ping to client: ", client.socket.id, err);
+                    }
+                }
+                
+                if (client.lastPongReceived < now - 120000 && client.lastPingSent > client.lastPongReceived) {
+                    this.networkManager.logger.warn("Client disconnected due to inactivity:", client.socket.id);
+                    try {
+                        client.socket.disconnect();
+                    } catch (err) {
+                        this.networkManager.logger.error("Error disconnecting client: ", client.socket.id, err);
+                    } finally {
+                        this.wsClientList.splice(i, 1);
+                    }
+                }
+            }
+        }, 60000);
     }
 
     sendEventToUser(userID: string, event: string, data?: I_WsMessage) {
-        for (const client of this.wsClientList) {
-            if (client.userid === userID) {
-                this.sendEventToClient(client, event, data);
-            }
+        const client = this.getClientByUserID(userID);
+        if (client) {
+            this.sendEventToClient(client, event, data);
         }
     }
 
@@ -69,32 +95,28 @@ export default class IoSocketServer {
     }
 
     sendEventToClient(client: I_Client, event: string, data?: I_WsMessage) {
-        this.ioSocket.to(client.socket.id).emit(event, data);
-        this.sendEventToAdmins(event, data);
+        try {
+            this.ioSocket.to(client.socket.id).emit(event, data);
+        } catch (err) {
+            this.networkManager.logger.error("Error sending event to client: ", client.socket.id, err);
+        }
     }
 
-    private getClientBySocketID (socketID: string): I_Client | undefined {
-        for (const client of this.wsClientList) {
-            if (client.socket.id === socketID)
-                return client;
-        }
-        return undefined;
-    }
-    private getClientByUserID (userID: string): I_Client | undefined {
-        for (const client of this.wsClientList) {
-            if (client.userid === userID)
-                return client;
-        }
-        return undefined;
+    private getClientBySocketID(socketID: string): I_Client | undefined {
+        return this.wsClientList.find(client => client.socket.id === socketID);
     }
 
-    private authMiddleware (socket: Socket, next: Function) {
+    private getClientByUserID(userID: string): I_Client | undefined {
+        return this.wsClientList.find(client => client.userid === userID);
+    }
+
+    private authMiddleware(socket: Socket, next: Function) {
         const token = socket.handshake.auth.token;
 
         if (token) {
             jwt.verify(token, this.JWTOptions.secret, (err: any, payload: any) => {
                 if (err)
-                    next(new Error('Authentication error'));
+                    return next(new Error('Authentication error'));
 
                 let client = this.getClientBySocketID(socket.id);
                 if (!client) {
@@ -104,9 +126,9 @@ export default class IoSocketServer {
                         userid: payload.id,
                         isAdmin: payload.isAdmin || false,
                         isSubscribed: false,
-                        lastPingSent: 0,
-                        lastPongReceived: 0
-                    }
+                        lastPingSent: Date.now(),
+                        lastPongReceived: Date.now()
+                    };
                     this.wsClientList.push(client);
                 }
                 next();
@@ -115,5 +137,5 @@ export default class IoSocketServer {
         else {
             return next(new Error('Authentication error'));
         }
-    };
+    }
 }

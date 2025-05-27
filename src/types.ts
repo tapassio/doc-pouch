@@ -69,14 +69,12 @@ export interface I_DocumentUpdate extends I_DocumentQuery{
     description?: string;
 }
 
-
-
 // Structure-related types
 export interface I_DataStructure {
     _id?: string | undefined;
     name: string;
     description: string;
-    reference?: any;
+    items?: any;
     fields: any[];
 }
 
@@ -84,7 +82,7 @@ export interface I_StructureEntry {
     _id?: string;
     name: string;
     description: string;
-    reference?: any;
+    items?: any;
     fields: any[];
 }
 
@@ -92,19 +90,18 @@ export interface I_StructureUpdate {
     _id: string;
     name?: string;
     description?: string;
-    reference?: any;
+    items?: any;
     fields?: any[];
 }
 
 export interface I_StructureCreation {
     name: string;
     description?: string;
-    reference?: any;
+    items?: any;
     fields: any[];
 }
 
 // Websocket-related types
-
 export interface I_WsMessage {
     newDocument?: I_DocumentEntry;
     newStructure?: I_StructureEntry;
@@ -115,8 +112,8 @@ export interface I_WsMessage {
     changedUser?: I_UserUpdate;
     confirmSubscription?: boolean;
     confirmUnsubscription?: boolean;
-    ping?: number;
-    pong?: number;
+    heartbeatPing?: number;
+    heartbeatPong?: number;
 }
 
 export interface I_Client {

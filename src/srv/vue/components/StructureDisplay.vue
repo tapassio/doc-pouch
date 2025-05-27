@@ -151,7 +151,7 @@ const getFieldTypeDisplay = (fieldType: string) => {
     case 'number': return 'Number';
     case 'boolean': return 'Yes/No';
     case 'date': return 'Date';
-    case 'reference': return 'Reference';
+    case 'items': return 'Items';
     default: return fieldType;
   }
 };
@@ -255,7 +255,7 @@ const getFieldTypeDisplay = (fieldType: string) => {
             </v-list-item-subtitle>
 
             <!-- Reference field if applicable -->
-            <v-list-item-subtitle v-if="field.reference" class="ml-4">
+            <v-list-item-subtitle v-if="field.items" class="ml-4">
               <span class="text-caption">Reference ID: {{ field.reference }}</span>
             </v-list-item-subtitle>
           </v-list-item>

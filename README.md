@@ -42,13 +42,16 @@ They contain a separate DataElement for each field of the data structure in thei
     ]
 }
 ```
+## Arrays of items
+Arrays of items are specified using the type "array" and indicating the type of the array elements in "items".
+
 ## Referencing other document structures
 Document structures can refer to other document structures to build more complex data interrelations.
-To reference a document structure inside another structure, the "reference" property in the DataElement is used.
+To reference a document structure inside another structure, the "items" property in the DataElement is used.
 
 **Example for a document structure referencing another**  
 This structure consists of the name of the street plus an array of data structures named "Houses" described in the data structure ```g33vo0rPd3jmfBqe```.
-The "reference" field can therefore only be used in combination with the types *array* or *structure*.
+The "items" field can therefore only be used in combination with the types *array* or *structure*.
 ```
 {
     "_id": "tt5vo04DN3jm8Bqe",
@@ -59,9 +62,14 @@ The "reference" field can therefore only be used in combination with the types *
             "type": "string",
         },
         {
+            "name": "Alternative names",
+            "type": "array",
+            "items": "string"
+        },
+        {
             "name": "houses",
             "type": "array",
-            "reference": "g33vo0rPd3jmfBqe"
+            "items": "g33vo0rPd3jmfBqe"
         }
     ]
 }
