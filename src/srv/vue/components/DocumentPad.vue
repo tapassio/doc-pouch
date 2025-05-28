@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import type {I_DocumentEntry} from "../../../types.ts";
+import { computed, ref, watchEffect } from 'vue';
+import type { I_DocumentEntry, I_UserEntry } from "../../../types.ts";
 import type DbPouchClient from 'docpouch-client';
 
 const props = defineProps<{
   documentList: I_DocumentEntry[];
+  userlist: I_UserEntry[]; // Added userlist prop to map owner IDs to usernames
   apiClient: DbPouchClient;
 }>();
 
@@ -14,8 +15,29 @@ const emit = defineEmits<{
   'documentRemoved': [documentID: string];
 }>();
 
+// Filter states
+const titleFilter = ref('');
+const typeFilter = ref('');
+const subtypeFilter = ref('');
+const ownerFilter = ref('');
+
 const showDeleteConfirmDialog = ref(false);
 const documentToDelete = ref<string | null>(null);
+
+// Create a map of user IDs to usernames
+const userMap = computed(() => {
+  const map = new Map();
+  props.userlist.forEach(user => {
+    map.set(user._id, user.name);
+  });
+  return map;
+});
+
+// Function to get username from user ID
+const getUsernameFromID = (userID: string): string => {
+  const username = userMap.value.get(userID);
+  return username !== undefined ? username : `Unknown (${userID})`;
+};
 
 const confirmDelete = () => {
   if (selectedDocumentID.value) {
@@ -38,15 +60,70 @@ const cancelDelete = () => {
   documentToDelete.value = null;
 };
 
+// Get unique types and subtypes for filter dropdowns
+const availableTypes = computed(() => {
+  if (!props.documentList) return [];
+  const types = [...new Set(props.documentList.map(doc => doc.type))];
+  return types.sort((a, b) => a - b);
+});
+
+const availableSubtypes = computed(() => {
+  if (!props.documentList) return [];
+  const subtypes = [...new Set(props.documentList.map(doc => doc.subType))];
+  return subtypes.sort((a, b) => a - b);
+});
+
+// Get unique owners (usernames, not IDs) for filter dropdown
+const availableOwners = computed(() => {
+  if (!props.documentList || !props.userlist) return [];
+  
+  const ownerUsernames = props.documentList
+    .map(doc => getUsernameFromID(doc.owner))
+    .filter(Boolean);
+  
+  return [...new Set(ownerUsernames)].sort();
+});
+
+// Enhanced document list with filtering
 const documents = computed(() => {
-  if (!props.documentList)
-    return [];
-  return props.documentList.map((entry: I_DocumentEntry) => {
-    return {id: entry._id, title: entry.title}
-  })
+  if (!props.documentList) return [];
+
+  let filteredDocs = props.documentList;
+
+  // Apply filters
+  if (titleFilter.value) {
+    filteredDocs = filteredDocs.filter(doc =>
+      doc.title.toLowerCase().includes(titleFilter.value.toLowerCase())
+    );
+  }
+
+  if (typeFilter.value) {
+    filteredDocs = filteredDocs.filter(doc => doc.type === parseInt(typeFilter.value));
+  }
+
+  if (subtypeFilter.value) {
+    filteredDocs = filteredDocs.filter(doc => doc.subType === parseInt(subtypeFilter.value));
+  }
+
+  if (ownerFilter.value) {
+    // Filter by username instead of user ID
+    filteredDocs = filteredDocs.filter(doc => getUsernameFromID(doc.owner) === ownerFilter.value);
+  }
+
+  return filteredDocs.map((entry: I_DocumentEntry) => {
+    return {
+      id: entry._id,
+      title: entry.title,
+      type: entry.type,
+      subType: entry.subType,
+      owner: getUsernameFromID(entry.owner), // Display username instead of ID
+      ownerId: entry.owner // Keep the original owner ID for reference
+    };
+  });
 });
 
 const selectedDocumentID = ref<string | null>(null);
+const showCreateDocumentDialog = ref(false);
 const showSuccessSnackbar = ref(false);
 
 const selectDocument = (documentID: string | undefined) => {
@@ -55,31 +132,163 @@ const selectDocument = (documentID: string | undefined) => {
     emit('documentSelected', documentID);
   }
 };
+
+const addNewDocument = () => {
+  console.log('Add new document');
+  showCreateDocumentDialog.value = true;
+};
+
+const handleDocumentCreated = () => {
+  showSuccessSnackbar.value = true;
+  emit('documentListChanged');
+};
+
+// Clear all filters
+const clearFilters = () => {
+  titleFilter.value = '';
+  typeFilter.value = '';
+  subtypeFilter.value = '';
+  ownerFilter.value = '';
+};
+
+// Check if any filters are active
+const hasActiveFilters = computed(() => {
+  return titleFilter.value || typeFilter.value || subtypeFilter.value || ownerFilter.value;
+});
 </script>
 
 <template>
   <div class="d-flex flex-column">
-    <v-card-text class="text-caption bg-blue-lighten-5 rounded mb-3">
-      Documents contain structured data that can follow predefined templates. Select a document to view or edit its contents.
-    </v-card-text>
+    <!-- Filter Section -->
+    <v-card class="mb-3" variant="outlined">
+      <v-card-title class="text-subtitle-1 pa-3">
+        <v-icon icon="mdi-filter" class="mr-2"></v-icon>
+        Filters
+        <v-spacer></v-spacer>
+        <v-btn
+          v-if="hasActiveFilters"
+          size="small"
+          variant="text"
+          color="primary"
+          @click="clearFilters"
+          prepend-icon="mdi-filter-remove"
+        >
+          Clear
+        </v-btn>
+      </v-card-title>
+      <v-card-text class="pa-3 pt-0">
+        <v-row no-gutters>
+          <v-col cols="12" md="3" class="pr-md-2">
+            <v-text-field
+              v-model="titleFilter"
+              label="Filter by title"
+              prepend-inner-icon="mdi-file-document-outline"
+              variant="outlined"
+              density="compact"
+              clearable
+              hide-details
+            ></v-text-field>
+          </v-col>
+          <v-col cols="12" md="3" class="px-md-1 mt-2 mt-md-0">
+            <v-select
+              v-model="typeFilter"
+              :items="availableTypes"
+              label="Filter by type"
+              prepend-inner-icon="mdi-format-list-bulleted-type"
+              variant="outlined"
+              density="compact"
+              clearable
+              hide-details
+            ></v-select>
+          </v-col>
+          <v-col cols="12" md="3" class="px-md-1 mt-2 mt-md-0">
+            <v-select
+              v-model="subtypeFilter"
+              :items="availableSubtypes"
+              label="Filter by subtype"
+              prepend-inner-icon="mdi-format-list-text"
+              variant="outlined"
+              density="compact"
+              clearable
+              hide-details
+            ></v-select>
+          </v-col>
+          <v-col cols="12" md="3" class="pl-md-2 mt-2 mt-md-0">
+            <v-select
+              v-model="ownerFilter"
+              :items="availableOwners"
+              label="Filter by owner"
+              prepend-inner-icon="mdi-account"
+              variant="outlined"
+              density="compact"
+              clearable
+              hide-details
+            ></v-select>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
 
+    <!-- Document List -->
     <div class="document-list-wrapper">
       <v-list class="document-list bg-grey-lighten-4" density="compact">
         <v-list-item
           v-for="document in documents"
           :key="document.id"
-          :title="document.title"
           :active="selectedDocumentID !== null && selectedDocumentID === document.id"
           @click="selectDocument(document.id)"
           class="document-list-item"
-        ></v-list-item>
+        >
+          <template v-slot:prepend>
+            <v-avatar size="32" color="primary">
+              <v-icon icon="mdi-file-document"></v-icon>
+            </v-avatar>
+          </template>
+
+          <v-list-item-title>{{ document.title }}</v-list-item-title>
+          <v-list-item-subtitle>
+            <div class="d-flex flex-row">
+              <span class="mr-3">
+                <v-icon icon="mdi-format-list-bulleted-type" size="small" class="mr-1"></v-icon>
+                Type: {{ document.type }}
+              </span>
+              <span class="mr-3">
+                <v-icon icon="mdi-format-list-text" size="small" class="mr-1"></v-icon>
+                Subtype: {{ document.subType }}
+              </span>
+              <span>
+                <v-icon icon="mdi-account" size="small" class="mr-1"></v-icon>
+                {{ document.owner }}
+              </span>
+            </div>
+          </v-list-item-subtitle>
+        </v-list-item>
+
+        <!-- Empty state when no documents match filters -->
+        <v-list-item v-if="documents.length === 0 && hasActiveFilters">
+          <v-list-item-title class="text-center text-grey">
+            <v-icon icon="mdi-file-search" class="mr-2"></v-icon>
+            No documents match the current filters
+          </v-list-item-title>
+        </v-list-item>
+
+        <!-- Empty state when no documents exist -->
+        <v-list-item v-if="documents.length === 0 && !hasActiveFilters && props.documentList?.length === 0">
+          <v-list-item-title class="text-center text-grey">
+            <v-icon icon="mdi-file-plus" class="mr-2"></v-icon>
+            No documents available. Click "New" to create the first document.
+          </v-list-item-title>
+        </v-list-item>
       </v-list>
     </div>
 
     <div class="d-flex justify-end mt-3">
+      <v-btn color="primary" class="mr-2" prepend-icon="mdi-plus" @click="addNewDocument">New</v-btn>
       <v-btn color="error" prepend-icon="mdi-delete" @click="confirmDelete" :disabled="!selectedDocumentID">Remove</v-btn>
     </div>
   </div>
+
+  <!-- Document creation dialog would be placed here -->
 
   <v-snackbar
     v-model="showSuccessSnackbar"
@@ -97,7 +306,7 @@ const selectDocument = (documentID: string | undefined) => {
     </template>
   </v-snackbar>
 
-  <!-- confirmation dialog -->
+  <!-- Confirmation dialog -->
   <v-dialog v-model="showDeleteConfirmDialog" max-width="400">
     <v-card>
       <v-card-title class="text-h5">Confirm Deletion</v-card-title>
@@ -112,3 +321,23 @@ const selectDocument = (documentID: string | undefined) => {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+.document-list-wrapper {
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.document-list {
+  border-radius: 4px;
+}
+
+.document-list-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.document-list-item:last-child {
+  border-bottom: none;
+}
+</style>

@@ -42,6 +42,8 @@ export default class NeDbWrapper {
                 this.createUser({
                     password: "adminSecret",
                     name: "admin",
+                    department: "administration",
+                    group: "auto-created",
                     isAdmin: true,
                 }).then((addedUser) => {
                     this.logger.info(`Created new admin user: ${JSON.stringify(addedUser)}`);
@@ -165,7 +167,12 @@ export default class NeDbWrapper {
                 else{
                     bcrypt.hash(newUser.password, this.saltRounds).then((hash:string) => {
                         this.users.add({
-                            email: newUser.email, name: newUser.name, password: hash, isAdmin: newUser.isAdmin
+                            email: newUser.email,
+                            department: newUser.department,
+                            group: newUser.group,
+                            name: newUser.name,
+                            password: hash,
+                            isAdmin: newUser.isAdmin
                         })
                             .then((result) => {
                                 this.logger.info("Created new user account: " + JSON.stringify(newUser));

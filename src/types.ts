@@ -15,6 +15,8 @@ export interface I_UserLogin {
 export interface I_UserCreation {
     name: string;
     password: string;
+    group: string;
+    department: string;
     email?: string;
     isAdmin: boolean;
 }
@@ -24,12 +26,16 @@ export interface I_UserUpdate {
     name?: string;
     password?: string;
     email?: string;
+    department?: string;
+    group?: string;
     isAdmin?: boolean;
 }
 
 export interface I_UserDisplay {
     _id: string;
     username: string;
+    department: string;
+    group: string;
     email?: string;
 }
 

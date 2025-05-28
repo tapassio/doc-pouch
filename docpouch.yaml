@@ -2,7 +2,7 @@ openapi: 3.0.1
 info:
   title: DocPouch
   description: A light-weight, document-based database including user-management. DocPouch is meant for tests, development or internal applications, where security is not a major factor. The database is file and text based and therefore also not layed out for high performance. Instead the main focus of DocPouch is simplicity and a small footprint.
-  version: 1.0.1
+  version: 1.0.2
 servers:
   - url: 'https://docpouch.example.com/api/v1'
     description: 'Main API server'
@@ -459,9 +459,19 @@ components:
           type: string
           description: "User email address"
           example: "darth@gmail.com"
+        department:
+          type: string
+          description: "The department the user is part of"
+          example: "Administration"
+        group:
+          type: string
+          description: "The group the user is part of"
+          example: "The Magentas"
       required:
         - _id
         - name
+        - department
+        - group
 
     UserCreation:
       type: object
@@ -479,6 +489,14 @@ components:
           type: string
           example: "darth@gmail.com"
           description: "User email address"
+        department:
+          type: string
+          description: "The department the user is part of"
+          example: "Administration"
+        group:
+          type: string
+          description: "The group the user is part of"
+          example: "The Magentas"
         isAdmin:
           type: boolean
           example: false
@@ -487,6 +505,8 @@ components:
         - name
         - password
         - isAdmin
+        - department
+        - group
 
     UserUpdate:
       type: object
@@ -508,6 +528,14 @@ components:
           type: boolean
           example: false
           description: "Flag indicating if the user has administrator privileges"
+        department:
+          type: string
+          description: "The department the user is part of"
+          example: "Administration"
+        group:
+          type: string
+          description: "The group the user is part of"
+          example: "The Magentas"
 
     UserLogin:
       type: object
@@ -577,9 +605,9 @@ components:
           description: "Determines the type of the data field"
           enum: ["number", "string", "boolean", "array", "structure"]
           example: "boolean"
-        reference:
+        items:
           type: string
-          description: "Reference to other existing data structures"
+          description: "Type of array items or reference to other existing data structures"
           example: "tt5vo04DN3jm8Bqe"
       required:
         - name

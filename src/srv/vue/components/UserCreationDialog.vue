@@ -99,7 +99,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue';
 import type DbPouchClient from 'docpouch-client';
-import type { I_UserDisplay } from '../../../types.ts';
+import type {I_UserCreation, I_UserDisplay} from '../../../types.ts';
 
 // Props and emits
 const props = defineProps<{
@@ -119,10 +119,12 @@ const isSubmitting = ref(false);
 const confirmPassword = ref('');
 
 // New user object
-const newUser = reactive({
+const newUser = reactive(<I_UserCreation>{
   name: '',
   password: '',
   email: '',
+  department: '',
+  group: '',
   isAdmin: false
 });
 
@@ -172,7 +174,9 @@ async function submitForm() {
       name: newUser.name,
       password: newUser.password,
       email: newUser.email || undefined,
-      isAdmin: newUser.isAdmin
+      isAdmin: newUser.isAdmin,
+      department: newUser.department,
+      group: newUser.group
     });
 
     emit('user-created', createdUser);

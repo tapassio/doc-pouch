@@ -279,7 +279,7 @@ function handleApiError(error: unknown, context: string = "API operation") {
 
       <v-container class="h-100 px-4">
         <v-row class="mx-0">
-          <v-col cols="4">
+          <v-col cols="6">
             <v-expansion-panels v-model="expandedPanel">
               <v-expansion-panel value="users">
                 <v-expansion-panel-title>
@@ -321,7 +321,8 @@ function handleApiError(error: unknown, context: string = "API operation") {
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
                   <DocumentPad 
-                    @document-selected="handleDocumentSelected" 
+                    @document-selected="handleDocumentSelected"
+                    :userlist="userArray"
                     :documentList="docArray"
                     :api-client="apiClient" 
                     @document-list-changed="fetchData"
@@ -332,14 +333,16 @@ function handleApiError(error: unknown, context: string = "API operation") {
             </v-expansion-panels>
           </v-col>
 
-          <v-col cols="8">
+          <v-col cols="6">
             <DocumentDisplay 
               id="2" 
               :object="loadedDocument" 
               v-show="shownComponent === DisplayComponent.documentViewer"
             />
             <UserDisplay
-              :user="loadedUser" 
+              :user="loadedUser"
+              :department-list="[...new Set(userArray.map(user => user.department))]"
+              :group-list="[...new Set(userArray.map(user => user.group))]"
               @user-updated="handleUserUpdate"
               v-if="shownComponent === DisplayComponent.userViewer"
             />

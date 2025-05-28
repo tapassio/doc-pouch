@@ -19,6 +19,8 @@ export default class SchemaValidator {
             name: string().required(),
             password: string().required(),
             email: string().optional(),
+            department: string().required(),
+            group: string().required(),
             isAdmin: boolean().required(),
         });
 
@@ -31,6 +33,8 @@ export default class SchemaValidator {
             name: string().optional(),
             password: string().optional(),
             email: string().optional(),
+            department: string().optional(),
+            group: string().optional(),
             isAdmin: boolean().optional(),
         });
 

@@ -9,7 +9,7 @@ import NeDbWrapper from "./NeDbWrapper.js";
 import winston from "winston";
 import jwt from "jsonwebtoken"
 import SchemaValidator from "./SchemaValidator.js";
-import IoSocketServer from "./IoSocketServer.ts";
+import IoSocketServer from "./IoSocketServer.js";
 import * as http from "node:http";
 
 const JWTOptions = {
@@ -123,6 +123,8 @@ export default class NetworkManager{
                     if (req.body.name) updateData.name = req.body.name;
                     if (req.body.password) updateData.password = req.body.password;
                     if (req.body.email) updateData.email = req.body.email;
+                    if (req.body.department) updateData.department = req.body.department;
+                    if (req.body.group) updateData.group = req.body.group;
                     if (req.body.isAdmin !== undefined) updateData.isAdmin = req.body.isAdmin;
 
                     this.dataManager.updateUser(userID, updateData)

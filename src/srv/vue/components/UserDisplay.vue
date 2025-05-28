@@ -50,6 +50,16 @@
             ></v-text-field>
           </v-col>
 
+          <!-- Department field -->
+          <v-col cols="12">
+            <v-combobox label="Department" :items="props.departmentList" variant="outlined" density="compact" v-model="department"/>
+          </v-col>
+
+          <!-- Group field -->
+          <v-col cols="12">
+            <v-combobox label="Department" :items="props.groupList" variant="outlined" density="compact" v-model="group"/>
+          </v-col>
+
           <!-- isAdmin field -->
           <v-col cols="12">
             <div class="d-flex align-center">
@@ -118,19 +128,33 @@ import type { I_UserEntry } from '../../../types.ts';
 
 const props = defineProps<{
   user: I_UserEntry | undefined;
+  departmentList: string[];
+  groupList: string[];
 }>();
 
 const emit = defineEmits<{
   'user-updated': [userID: string, field: string, value: any];
 }>();
 
-// Create local refs for the editable fields
 const username = ref(props.user?.name);
 const password = ref(props.user?.password);
 const email = ref(props.user?.email);
 const isAdmin = ref(props.user?.isAdmin);
+const department = ref(props.user?.department);
+const group = ref(props.user?.group);
 
-// Password change dialog
+let departmentItems = computed(() => {
+  return props.departmentList.map(d => {
+    return { text: d, value: d };
+  })
+});
+
+let groupItems = computed(() => {
+    return props.groupList.map(d => {
+      return { text: d, value: d };
+    });
+})
+
 const showPasswordDialog = ref(false);
 const newPassword = ref('');
 const confirmPassword = ref('');
@@ -143,7 +167,6 @@ const passwordRules = [
   (v: string) => /[A-Z]/.test(v) || 'Password must contain at least one uppercase letter',
   (v: string) => /[0-9]/.test(v) || 'Password must contain at least one number',
 ];
-
 const passwordMatchRule = (v: string) => v === newPassword.value || 'Passwords do not match';
 
 onMounted(() => {
@@ -179,6 +202,26 @@ function updateEmail(value: string | undefined) {
     emit('user-updated', props.user._id, 'email', value);
   } else {
     console.error('Cannot update email: user id is undefined', props.user);
+  }
+}
+
+function updateDepartment(value: string | undefined) {
+  console.log('updateDepartment called with value:', value);
+  if (props.user?._id !== undefined) {
+    console.log('Emitting user-updated for department:', props.user._id, 'department', value);
+    emit('user-updated', props.user._id, 'department', value);
+  } else {
+    console.error('Cannot update department: user id is undefined', props.user);
+  }
+}
+
+function updateGroup(value: string | undefined) {
+  console.log('updateGroup called with value:', value);
+  if (props.user?._id !== undefined) {
+    console.log('Emitting user-updated for group:', props.user._id, 'group', value);
+    emit('user-updated', props.user._id, 'group', value);
+  } else {
+    console.error('Cannot update group: user id is undefined', props.user);
   }
 }
 
