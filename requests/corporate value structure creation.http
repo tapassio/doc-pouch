@@ -45,17 +45,17 @@ Content-Type: application/json
   "name": "Corporate Value Norm",
   "fields": [
     {
-      "name": "title",
+      "name": "Title",
       "type": "string"
     },
     {
-      "name": "description",
+      "name": "Description",
       "type": "string"
     },
     {
-      "name": "targets",
+      "name": "Targets",
       "type": "array",
-      "reference": "{{targetStructureID}}"
+      "items": "{{targetStructureID}}"
     }
   ]
 }
@@ -83,9 +83,9 @@ Content-Type: application/json
       "type": "string"
     },
     {
-      "name": "norms",
+      "name": "Value Norms",
       "type": "array",
-      "reference": "{{normStructureID}}"
+      "items": "{{normStructureID}}"
     }
   ]
 }
@@ -112,9 +112,9 @@ Content-Type: application/json
       "type": "string"
     },
     {
-      "name": "activities",
+      "name": "Value Activities",
       "type": "array",
-      "reference": "{{activityStructureID}}"
+      "items": "{{activityStructureID}}"
     }
   ]
 }
@@ -137,9 +137,9 @@ Content-Type: application/json
       "type": "string"
     },
     {
-      "name": "goals",
+      "name": "Value Goals",
       "type": "array",
-      "reference": "{{goalStructureID}}"
+      "items": "{{goalStructureID}}"
     }
   ]
 }
@@ -162,9 +162,9 @@ Content-Type: application/json
       "type": "string"
     },
     {
-      "name": "issues",
+      "name": "Value Issues",
       "type": "array",
-      "reference": "{{issueStructureID}}"
+      "items": "{{issueStructureID}}"
     }
   ]
 }

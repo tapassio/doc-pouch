@@ -347,7 +347,8 @@ function handleApiError(error: unknown, context: string = "API operation") {
               v-if="shownComponent === DisplayComponent.userViewer"
             />
             <StructureDisplay
-              :structure="loadedStructure"
+              :displayStructure="loadedStructure"
+              :structure-list="structureArray"
               :is-admin="isAdmin"
               v-if="shownComponent === DisplayComponent.structureViewer"
             />

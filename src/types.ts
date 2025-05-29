@@ -80,32 +80,44 @@ export interface I_DataStructure {
     _id?: string | undefined;
     name: string;
     description: string;
-    items?: any;
-    fields: any[];
+    fields: I_StructureField[];
 }
 
 export interface I_StructureEntry {
     _id?: string;
     name: string;
     description: string;
-    items?: any;
-    fields: any[];
+    fields: I_StructureField[];
 }
 
 export interface I_StructureUpdate {
     _id: string;
     name?: string;
     description?: string;
-    items?: any;
-    fields?: any[];
+    fields?: I_StructureField[];
 }
 
 export interface I_StructureCreation {
     name: string;
     description?: string;
-    items?: any;
-    fields: any[];
+    fields: I_StructureField[];
 }
+
+export interface I_StructureField {
+    name: string;
+    type: string;
+    items?: string;
+}
+
+export interface I_StructureTreeItem {
+    id?: string;
+    name: string;        // Changed from title to name
+    children?: I_StructureTreeItem[];
+    icon?: string;       // For the icon
+    color?: string;      // For the icon color
+}
+
+
 
 // Websocket-related types
 export interface I_WsMessage {

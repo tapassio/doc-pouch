@@ -1,270 +1,270 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
-import type { I_DataStructure } from "../../../types.ts";
+import type {I_DataStructure, I_StructureField, I_StructureTreeItem} from "../../../types.ts";
 
 const props = defineProps<{
-  structure: I_DataStructure | undefined;
+  displayStructure: I_DataStructure | undefined;
+  structureList: I_DataStructure[];
   isAdmin: boolean;
 }>();
 
 const emit = defineEmits<{
-  'update:structure': [updatedStructure: I_DataStructure | undefined];
+  'update:structure': [updatedStructure: I_DataStructure];
 }>();
 
-// Track expanded state for each property
-const expandedProperties = ref(new Set<string>());
+// Map data types to their corresponding icons and colors
+interface IconEntry {
+  icon: string;
+  color: string;
+}
 
-// Add functions for expanding/collapsing properties
-const toggleExpanded = (key: string) => {
-  if (expandedProperties.value.has(key)) {
-    expandedProperties.value.delete(key);
-  } else {
-    expandedProperties.value.add(key);
-  }
+// Define the exact shape of typeIcons
+const typeIcons: Record<string, IconEntry> = {
+  string: { icon: 'mdi-format-quote-close', color: 'success' },
+  number: { icon: 'mdi-numeric', color: 'info' },
+  boolean: { icon: 'mdi-toggle-switch-outline', color: 'purple' },
+  array: { icon: 'mdi-format-list-bulleted-square', color: 'warning' },
+  structure: { icon: 'mdi-database', color: 'primary' },
+  default: { icon: 'mdi-help-circle-outline', color: 'grey' }
 };
 
-const isExpanded = (key: string) => {
-  return expandedProperties.value.has(key);
-};
+// Function to get the type icon with a proper key assertion
+function getTypeIcon(type: string): IconEntry {
+  return (typeIcons as Record<string, IconEntry>)[type] || typeIcons.default;
+}
 
-// Format structure metadata
-const structureMetadata = computed(() => {
-  if (!props.structure) return null;
-
-  return {
-    title: props.structure.name || 'Untitled Structure',
-    fieldCount: props.structure.fields?.length || 0
+const treeItems = computed(() => {
+  if (!props.displayStructure) return [];
+  
+  // Create a root item for the structure
+  const rootItem: I_StructureTreeItem = {
+    name: props.displayStructure.name,
+    id: props.displayStructure._id || "root",
+    children: [],
+    icon: 'mdi-folder-table',
+    color: 'amber'
   };
+  
+  // Add each field as a child
+  if (props.displayStructure.fields && props.displayStructure.fields.length > 0) {
+    rootItem.children = props.displayStructure.fields.map(field => createFieldNode(field));
+  }
+  
+  return [rootItem]; // Return as an array with a single root item
 });
 
-// For editing values
-const editingPath = ref<string[]>([]);
-const editingValue = ref<any>(null);
-
-// Check if we're currently editing a path
-const isEditing = (path: string[]) => {
-  if (editingPath.value.length !== path.length) return false;
-
-  return path.every((segment, index) => segment === editingPath.value[index]);
-};
-
-// Start editing a value
-const startEditing = (path: string[], value: any) => {
-  // Only allow editing primitive values and only for admin users
-  if (value !== null && typeof value === 'object') return;
-  if (!props.isAdmin) return;
-
-  editingPath.value = [...path];
-  editingValue.value = value;
-};
-
-// Save the edited value
-const saveEdit = () => {
-  if (!props.structure || editingPath.value.length === 0) return;
-  if (!props.isAdmin) return; // Only admins can save changes
-
-  // Create a deep copy of the structure
-  const updatedStructure = JSON.parse(JSON.stringify(props.structure));
-
-  // Navigate to the parent object
-  let current = updatedStructure;
-  let lastKey: number | string = editingPath.value[editingPath.value.length - 1];
-
-  // Navigate to the correct position
-  for (let i = 0; i < editingPath.value.length - 1; i++) {
-    const key = editingPath.value[i];
-    if (key === 'structure_fields') {
-      current = current.structure_fields;
-    } else {
-      // Handle array indices (convert to number if needed)
-      const parsedKey = !isNaN(Number(key)) ? Number(key) : key;
-      current = current[parsedKey];
-    }
+function createFieldNode(field: I_StructureField): I_StructureTreeItem {
+  // Create the node for this field
+  const node: I_StructureTreeItem = {
+    name: `${field.name}`,
+    id: field.name,
+    children: []
+  };
+  
+  // Add type information and corresponding icon
+  switch (field.type) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+      const typeInfo = typeIcons[field.type];
+      node.icon = typeInfo.icon;
+      node.color = typeInfo.color;
+      break;
+      
+    case 'array':
+      node.icon = typeIcons.array.icon;
+      node.color = typeIcons.array.color;
+      
+      if (field.items === 'string' || field.items === 'number' || field.items === 'boolean') {
+        node.name = `${field.name} (Array of ${field.items})`;
+        // Add small badge or icon for item type
+        const itemTypeInfo = typeIcons[field.items] || typeIcons.default;
+      } else if (field.items) {
+        node.name = `${field.name} (Array of structures)`;
+        
+        // Try to find the referenced structure
+        const referencedStructure = props.structureList.find(s => s._id === field.items);
+        if (!node.children)
+          node.children = [];
+        if (referencedStructure) {
+          // Create a child node for the referenced structure
+          const structureNode: I_StructureTreeItem = {
+            name: referencedStructure.name,
+            id: `${node.id}.${referencedStructure._id}`,
+            children: [],
+            icon: typeIcons.structure.icon,
+            color: typeIcons.structure.color
+          };
+          
+          // Add fields from the referenced structure
+          if (referencedStructure.fields && referencedStructure.fields.length > 0) {
+            structureNode.children = referencedStructure.fields.map(childField => 
+              createFieldNode(childField)
+            );
+          }
+          
+          node.children.push(structureNode);
+        } else {
+          // Referenced structure not found
+          node.children.push({
+            name: `Unknown Structure (ID: ${field.items})`,
+            id: `${node.id}.unknown-${field.items}`,
+            icon: 'mdi-alert-circle-outline',
+            color: 'grey'
+          });
+        }
+      }
+      break;
+      
+    case 'structure':
+      node.name = `${field.name}`;
+      node.icon = typeIcons.structure.icon;
+      node.color = typeIcons.structure.color;
+      
+      // Try to find the referenced structure
+      if (field.items) {
+        const referencedStructure = props.structureList.find(s => s._id === field.items);
+        if (!node.children)
+          node.children = [];
+        if (referencedStructure) {
+          // Create a child node for the referenced structure
+          const structureNode: I_StructureTreeItem = {
+            name: referencedStructure.name,
+            id: `${node.id}.${referencedStructure._id}`,
+            children: [],
+            icon: typeIcons.structure.icon,
+            color: typeIcons.structure.color
+          };
+          
+          // Add fields from the referenced structure
+          if (referencedStructure.fields && referencedStructure.fields.length > 0) {
+            structureNode.children = referencedStructure.fields.map(childField => 
+              createFieldNode(childField)
+            );
+          }
+          
+          node.children.push(structureNode);
+        } else {
+          // Referenced structure not found
+          node.children.push({
+            name: `Unknown Structure (ID: ${field.items})`,
+            id: `${node.id}.unknown-${field.items}`,
+            icon: 'mdi-alert-circle-outline',
+            color: 'grey'
+          });
+        }
+      }
+      break;
+      
+    default:
+      node.icon = typeIcons.default.icon;
+      node.color = typeIcons.default.color;
   }
+  
+  return node;
+}
 
-  // Convert lastKey to number if it's an array index
-  lastKey = !isNaN(Number(lastKey)) ? Number(lastKey) : lastKey;
-
-  // Get the original value to determine type
-  let originalValue: any = props.structure;
-  for (let i = 0; i < editingPath.value.length; i++) {
-    const key = editingPath.value[i];
-    if (originalValue === undefined) break;
-
-    if (key === 'structure_fields') {
-      originalValue = originalValue.structure_fields;
-    } else {
-      const parsedKey = !isNaN(Number(key)) ? Number(key) : key;
-      originalValue = originalValue[parsedKey];
-    }
-  }
-
-  // Convert the value to match the original type
-  let typedValue = editingValue.value;
-
-  if (typeof originalValue === 'number') {
-    typedValue = Number(editingValue.value);
-  } else if (typeof originalValue === 'boolean') {
-    if (typeof editingValue.value === 'string') {
-      typedValue = editingValue.value.toLowerCase() === 'true';
-    } else {
-      typedValue = Boolean(editingValue.value);
-    }
-  }
-
-  // Update the value
-  current[lastKey] = typedValue;
-
-  // Emit the updated structure
-  emit('update:structure', updatedStructure);
-
-  // Exit edit mode
-  cancelEdit();
-};
-
-// Cancel editing
-const cancelEdit = () => {
-  editingPath.value = [];
-  editingValue.value = null;
-};
-
-// Handle keydown events while editing
-const handleKeyDown = (event: KeyboardEvent) => {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    saveEdit();
-  } else if (event.key === 'Escape') {
-    event.preventDefault();
-    cancelEdit();
-  }
-};
-
-// Function to get the full path string for debug display
-const getPathString = (path: string[]) => {
-  return path.join('.');
-};
-
-// Helper function to get field type display
-const getFieldTypeDisplay = (fieldType: string) => {
-  switch (fieldType) {
-    case 'string': return 'Text';
-    case 'number': return 'Number';
-    case 'boolean': return 'Yes/No';
-    case 'date': return 'Date';
-    case 'items': return 'Items';
-    default: return fieldType;
-  }
-};
+// Debug log to check what's in the treeItems
+watch(treeItems, (newItems) => {
+  console.log("Tree items updated:", newItems);
+}, { immediate: true });
 </script>
 
 <template>
   <v-card class="structure-viewer">
     <v-card-title class="text-h6">
-      {{ structureMetadata?.title || 'No Structure Selected' }}
+      {{ props.displayStructure?.name || 'No Structure Selected' }}
     </v-card-title>
 
-    <v-card-subtitle v-if="structureMetadata">
-      Fields: {{ structureMetadata.fieldCount }}
-    </v-card-subtitle>
-
     <v-card-text>
-      <!-- Structure metadata -->
-      <v-sheet 
-        class="mb-4 pa-3 rounded bg-grey-lighten-4"
-        v-if="props.structure"
-      >
-        <div class="d-flex align-center">
-          <div class="mr-4">
-            <span class="font-weight-medium">ID:</span> 
-            <span class="ml-1">{{ props.structure._id }}</span>
+      <v-sheet class="mb-4 pa-3 rounded bg-grey-lighten-4" v-if="props.displayStructure">
+        <div class="d-flex flex-column">
+          <div class="mb-3">
+            <span class="font-weight-medium">ID:</span>
+            <span class="ml-1">{{ props.displayStructure._id }}</span><br>
+            <span class="ml-1">{{ props.displayStructure?.description }}</span>
           </div>
 
-          <span v-if="editingPath.length > 0" class="ml-auto text-caption">
-            Editing: {{ getPathString(editingPath) }}
-          </span>
+          <!-- Ensure the tree container has proper styling -->
+          <div class="structure-tree-container">
+            <div class="d-flex align-center mb-2">
+              <h3 class="text-subtitle-1 mr-auto">Structure Hierarchy</h3>
+
+              <!-- Legend for type icons -->
+              <div class="d-flex flex-wrap justify-end type-legend">
+                <div class="legend-item">
+                  <v-icon size="small" color="success">{{ typeIcons.string.icon }}</v-icon>
+                  <span class="legend-label">String</span>
+                </div>
+                <div class="legend-item">
+                  <v-icon size="small" color="info">{{ typeIcons.number.icon }}</v-icon>
+                  <span class="legend-label">Number</span>
+                </div>
+                <div class="legend-item">
+                  <v-icon size="small" color="purple">{{ typeIcons.boolean.icon }}</v-icon>
+                  <span class="legend-label">Boolean</span>
+                </div>
+                <div class="legend-item">
+                  <v-icon size="small" color="warning">{{ typeIcons.array.icon }}</v-icon>
+                  <span class="legend-label">Array</span>
+                </div>
+                <div class="legend-item">
+                  <v-icon size="small" color="primary">{{ typeIcons.structure.icon }}</v-icon>
+                  <span class="legend-label">Structure</span>
+                </div>
+              </div>
+            </div>
+
+            <v-treeview
+              :items="treeItems"
+              activatable
+              :open="true"
+              rounded
+              hoverable
+              dense
+              class="structure-tree"
+              item-key="id"
+              item-children="children"
+              item-text="name"
+              hide-icons
+            >
+              <template v-slot:prepend="{ item }">
+                <div style="display:flex; align-items:center;">
+                  <span>{{ item.name }}</span>
+                </div>
+
+              </template>
+              <template v-slot:append="{ item }">
+                <v-icon :icon="item.icon" :color="item.color"></v-icon>
+              </template>
+            </v-treeview>
+          </div>
         </div>
       </v-sheet>
 
       <!-- Structure fields list -->
-      <v-list v-if="props.structure?.fields" class="content-list">
+      <v-list v-if="props.displayStructure?.fields && props.displayStructure.fields.length > 0" class="structure-fields">
         <v-list-subheader>Structure Fields</v-list-subheader>
 
-        <template v-for="(field, index) in props.structure.fields" :key="index">
-          <v-list-item class="content-item">
-            <template v-slot:prepend>
-              <v-icon
-                :icon="'mdi-file-document'"
-                :color="'blue'"
-              ></v-icon>
-            </template>
+        <v-list-item v-for="field in props.displayStructure.fields" :key="field.name" class="field-item">
+          <template v-slot:prepend>
+            <v-icon :icon="typeIcons[field.type].icon" :color="typeIcons[field.type].color"></v-icon>
+          </template>
 
-            <v-list-item-title class="mr-4">
-              {{ field.name }}:
-            </v-list-item-title>
+          <v-list-item-title>{{ field.name }}</v-list-item-title>
 
-            <!-- Field type display -->
-            <v-list-item-subtitle class="flex-grow-1">
-              <!-- If currently editing this value -->
-              <template v-if="isEditing(['structure_fields', index.toString(), 'fieldType'])">
-                <div class="d-flex align-center">
-                  <v-text-field
-                    v-model="editingValue"
-                    density="compact"
-                    hide-details
-                    variant="outlined"
-                    class="edit-field flex-grow-1"
-                    @keydown="handleKeyDown"
-                    autofocus
-                  ></v-text-field>
-                  <v-btn 
-                    icon="mdi-check" 
-                    size="small" 
-                    color="success" 
-                    class="ml-2"
-                    @click="saveEdit()"
-                  ></v-btn>
-                  <v-btn 
-                    icon="mdi-close" 
-                    size="small" 
-                    color="error" 
-                    class="ml-2"
-                    @click="cancelEdit()"
-                  ></v-btn>
-                </div>
+          <template v-slot:append>
+            <v-chip size="small" :color="typeIcons[field.type].color" variant="tonal">
+              {{ field.type }}
+              <template v-if="field.type === 'array' || field.type === 'structure'">
+                <span v-if="field.items" class="ml-1">({{ field.items }})</span>
               </template>
-
-              <!-- Normal display with edit button -->
-              <template v-else>
-                <div class="d-flex align-center">
-                  <span class="type-string">
-                    {{ getFieldTypeDisplay(field.type) }}
-                  </span>
-
-                  <!-- Edit button (only for admins) -->
-                  <v-btn
-                    v-if="props.isAdmin"
-                    icon="mdi-pencil"
-                    size="x-small"
-                    variant="text"
-                    color="primary"
-                    class="ml-2"
-                    @click.stop="startEditing(['structure_fields', index.toString(), 'fieldType'], field.type)"
-                  ></v-btn>
-                </div>
-              </template>
-            </v-list-item-subtitle>
-
-            <!-- Reference field if applicable -->
-            <v-list-item-subtitle v-if="field.items" class="ml-4">
-              <span class="text-caption">Reference ID: {{ field.reference }}</span>
-            </v-list-item-subtitle>
-          </v-list-item>
-
-          <v-divider></v-divider>
-        </template>
+            </v-chip>
+          </template>
+        </v-list-item>
       </v-list>
 
-      <div v-if="!props.structure?.fields || props.structure.fields.length === 0" class="text-center pa-4">
+      <div v-else-if="props.displayStructure" class="text-center pa-4">
         No fields defined in this structure
       </div>
     </v-card-text>
@@ -278,17 +278,49 @@ const getFieldTypeDisplay = (fieldType: string) => {
   flex-direction: column;
 }
 
-.content-list {
+.structure-tree-container {
+  min-height: 200px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background-color: white;
+}
+
+.structure-tree {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.type-legend {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.legend-label {
+  font-size: 12px;
+  margin-left: 4px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.structure-fields {
   border: 1px solid #e0e0e0;
   border-radius: 4px;
   margin-bottom: 16px;
 }
 
-.content-item {
+.field-item {
   transition: background-color 0.2s ease;
 }
 
-.content-item:hover {
+.field-item:hover {
   background-color: rgba(0, 0, 0, 0.03);
 }
 
