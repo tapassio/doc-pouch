@@ -80,31 +80,33 @@ export interface I_DataStructure {
     _id?: string | undefined;
     name: string;
     description: string;
-    items?: any;
-    fields: any[];
+    fields: I_StructureField[];
 }
 
 export interface I_StructureEntry {
     _id?: string;
     name: string;
     description: string;
-    items?: any;
-    fields: any[];
+    fields: I_StructureField[];
 }
 
 export interface I_StructureUpdate {
     _id: string;
     name?: string;
     description?: string;
-    items?: any;
     fields?: any[];
 }
 
 export interface I_StructureCreation {
     name: string;
     description?: string;
-    items?: any;
     fields: any[];
+}
+
+export interface I_StructureField {
+    name: string;
+    type: string;
+    items?: string;
 }
 
 // Websocket-related types
@@ -126,7 +128,6 @@ export interface I_Client {
     socket: Socket
     userid: string | null;
     isAdmin: boolean;
-    isSubscribed: boolean;
     lastPingSent: number;
     lastPongReceived: number;
 }

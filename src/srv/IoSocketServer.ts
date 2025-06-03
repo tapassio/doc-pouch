@@ -15,8 +15,11 @@ export default class IoSocketServer {
         this.networkManager = networkManager;
         this.ioSocket = new Server(this.networkManager.webServer, {
             cors: {
-                origin: "*"
-            }
+                origin: "*",
+                methods: ["GET", "POST"],
+                credentials: true
+            },
+            allowEIO3: true
         });
 
         this.ioSocket.use((socket, next) => this.authMiddleware(socket, next));
@@ -32,16 +35,6 @@ export default class IoSocketServer {
                 socket.on('disconnect', () => {
                     this.networkManager.logger.info("Client disconnected: ", socket.id);
                     this.wsClientList = this.wsClientList.filter(client => client.socket.id !== socket.id);
-                });
-
-                socket.on("subscribe", () => {
-                    client.isSubscribed = true;
-                    this.sendEventToClient(client, "confirmSubscription")
-                });
-
-                socket.on("unsubscribe", () => {
-                    client.isSubscribed = false;
-                    this.sendEventToClient(client, "confirmUnsubscription")
                 });
 
                 socket.on("heartbeatPong", () => {
@@ -79,26 +72,30 @@ export default class IoSocketServer {
         }, 60000);
     }
 
-    sendEventToUser(userID: string, event: string, data?: I_WsMessage) {
-        const client = this.getClientByUserID(userID);
-        if (client) {
-            this.sendEventToClient(client, event, data);
-        }
-    }
-
-    sendEventToAdmins(event: string, data?: I_WsMessage) {
-        for (const client of this.wsClientList) {
-            if (client.isAdmin) {
-                this.sendEventToClient(client, event, data);
+    sendEventToUser(sourceID: string | undefined, userID: string, event: string, data?: I_WsMessage) {
+        const clients = this.getClientsByUserID(userID);
+        if (clients) {
+            for (let client of clients) {
+                this.sendEventToClient(sourceID, client, event, data);
             }
         }
     }
 
-    sendEventToClient(client: I_Client, event: string, data?: I_WsMessage) {
-        try {
-            this.ioSocket.to(client.socket.id).emit(event, data);
-        } catch (err) {
-            this.networkManager.logger.error("Error sending event to client: ", client.socket.id, err);
+    sendEventToAdmins(sourceID: string | undefined, event: string, data?: I_WsMessage) {
+        for (const client of this.wsClientList) {
+            if (client.isAdmin) {
+                this.sendEventToClient(sourceID, client, event, data);
+            }
+        }
+    }
+
+    sendEventToClient(sourceID: string | undefined, client: I_Client, event: string, data?: I_WsMessage) {
+        if (!sourceID || sourceID !== client.socket.id) {
+            try {
+                this.ioSocket.to(client.socket.id).emit(event, data);
+            } catch (err) {
+                this.networkManager.logger.error("Error sending event to client: ", client.socket.id, err);
+            }
         }
     }
 
@@ -106,8 +103,8 @@ export default class IoSocketServer {
         return this.wsClientList.find(client => client.socket.id === socketID);
     }
 
-    private getClientByUserID(userID: string): I_Client | undefined {
-        return this.wsClientList.find(client => client.userid === userID);
+    private getClientsByUserID(userID: string): I_Client[] | undefined {
+        return this.wsClientList.filter(client => client.userid === userID);
     }
 
     private authMiddleware(socket: Socket, next: Function) {
@@ -125,7 +122,6 @@ export default class IoSocketServer {
                         socket: socket,
                         userid: payload.id,
                         isAdmin: payload.isAdmin || false,
-                        isSubscribed: false,
                         lastPingSent: Date.now(),
                         lastPongReceived: Date.now()
                     };

@@ -52,12 +52,22 @@
 
           <!-- Department field -->
           <v-col cols="12">
-            <v-combobox label="Department" :items="props.departmentList" variant="outlined" density="compact" v-model="department"/>
+            <v-combobox label="Department"
+                        :items="props.departmentList"
+                        variant="outlined"
+                        density="compact"
+                        v-model="department"
+                        @update:model-value="updateDepartment"/>
           </v-col>
 
           <!-- Group field -->
           <v-col cols="12">
-            <v-combobox label="Department" :items="props.groupList" variant="outlined" density="compact" v-model="group"/>
+            <v-combobox label="Department"
+                        :items="props.groupList"
+                        variant="outlined"
+                        density="compact"
+                        v-model="group"
+                        @update:model-value="updateGroup"/>
           </v-col>
 
           <!-- isAdmin field -->
@@ -182,6 +192,8 @@ watch(() => props.user, (newUser) => {
   password.value = newUser.password;
   email.value = newUser.email;
   isAdmin.value = newUser.isAdmin;
+  department.value = newUser.department;
+  group.value = newUser.group;
 }, { immediate: true, deep: true });
 
 // Emit events when fields change

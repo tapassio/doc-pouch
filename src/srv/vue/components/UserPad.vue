@@ -7,6 +7,8 @@ import type DbPouchClient from 'docpouch-client';
 const props = defineProps<{
   userlist: I_UserEntry[] | undefined;
   apiClient: DbPouchClient;
+  departmentList: string[];
+  groupList: string[];
 }>();
 
 const emit = defineEmits<{
@@ -251,6 +253,8 @@ const hasActiveFilters = computed(() => {
       v-model:show="showCreateUserDialog"
       :api-client="apiClient"
       @user-created="handleUserCreated"
+      :group-list="props.groupList"
+      :department-list="props.departmentList"
     />
 
   <v-snackbar

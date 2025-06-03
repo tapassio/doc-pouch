@@ -2,7 +2,7 @@
 GET {{base-url}}/users/list
 
 ### Admin Login
-POST http://localhost/users/login/
+POST {{base-url}}/users/login/
 Content-Type: application/json
 
 {
@@ -24,5 +24,7 @@ Content-Type: application/json
   "name": "Darth Vader",
   "password": "darths-secret",
   "email": "darth@gmail.com",
+  "department": "Arts",
+  "group": "Expression Dance",
   "isAdmin": false
 }

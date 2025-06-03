@@ -1,7 +1,7 @@
 <template>
   <v-dialog v-model="dialogVisible" max-width="600px" persistent>
     <v-card>
-      <v-card-title class="headline">Create New User</v-card-title>
+      <v-card-title class="headline bg-blue-darken-2">Create New User</v-card-title>
 
       <v-card-text>
         <v-form ref="form" v-model="formValid" @submit.prevent="submitForm">
@@ -49,10 +49,35 @@
                 <v-text-field
                   v-model="newUser.email"
                   :rules="emailRules"
-                  label="Email"
+                  label="Email (optional)"
                   variant="outlined"
                   density="compact"
                 ></v-text-field>
+              </v-col>
+
+              <!-- Department field -->
+              <v-col cols="12">
+                <v-combobox
+                    v-model="newUser.department"
+                    :rules="mandatoryFieldRules"
+                    label="Department"
+                    :items="props.departmentList"
+                    variant="outlined"
+                    density="compact"
+                ></v-combobox>
+
+              </v-col>
+
+              <!-- Group field -->
+              <v-col cols="12">
+                <v-combobox
+                    v-model="newUser.group"
+                    :rules="mandatoryFieldRules"
+                    label="Group"
+                    :items="props.groupList"
+                    variant="outlined"
+                    density="compact"
+                ></v-combobox>
               </v-col>
 
               <!-- Admin switch -->
@@ -105,6 +130,8 @@ import type {I_UserCreation, I_UserDisplay} from '../../../types.ts';
 const props = defineProps<{
   show: boolean;
   apiClient: DbPouchClient;
+  groupList: string[];
+  departmentList: string[];
 }>();
 
 const emit = defineEmits<{
@@ -140,6 +167,10 @@ const passwordRules = [
   (v: string) => v.length >= 8 || 'Password must be at least 8 characters',
   (v: string) => /[A-Z]/.test(v) || 'Password must contain at least one uppercase letter',
   (v: string) => /[0-9]/.test(v) || 'Password must contain at least one number'
+];
+
+const mandatoryFieldRules = [
+  (v: string) => !!v || 'This field is required',
 ];
 
 const passwordMatchRule = (v: string) => v === newUser.password || 'Passwords do not match';

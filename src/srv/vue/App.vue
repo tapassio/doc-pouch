@@ -2,16 +2,18 @@
 import UserPad from "./components/UserPad.vue";
 import DocumentDisplay from "./components/DocumentDisplay.vue";
 import LoginDialog from "./components/LoginDialog.vue";
-import {ref, onMounted, computed} from "vue";
+import {ref, onMounted, computed, watch} from "vue";
 import DbPouchClient from "docpouch-client";
-import type { I_DocumentEntry, I_UserEntry, I_DataStructure, I_LoginResponse } from "../../types.ts";
+import type {I_DocumentEntry, I_UserEntry, I_DataStructure, I_LoginResponse, I_WsMessage} from "../../types.ts";
 import UserDisplay from "./components/UserDisplay.vue";
 import StructurePad from "./components/StructurePad.vue";
 import DocumentPad from "./components/DocumentPad.vue";
 import StructureDisplay from "./components/StructureDisplay.vue";
 import docPouchLogo from './assets/docPouch.png';
 import AboutDialog from "./components/AboutDialog.vue";
+import type {I_EventString} from "../../../../docpouch-client/dist/types";
 
+const serverPort = 3030;
 enum DisplayComponent {
   documentViewer,
   userViewer,
@@ -24,11 +26,12 @@ const userArray = ref(<I_UserEntry[]>[]);
 const docArray = ref(<I_DocumentEntry[]>[]);
 const structureArray = ref(<I_DataStructure[]>[]);
 let shownComponent = ref(DisplayComponent.documentViewer);
-const apiClient = new DbPouchClient(window.location.href.slice(0, window.location.href.lastIndexOf('/')));
+const apiClient = new DbPouchClient(window.location.href.slice(0, window.location.href.lastIndexOf('/')), serverPort, handleNetworkEvent);
 const isLoggedIn = computed(() => authToken.value !== null);
 const isAdmin = ref(false);
 const showLoginDialog = ref(true)
 const showAboutDialog = ref(false)
+const realtimeUpdates = ref(false);
 let loadedDocument = ref<I_DocumentEntry | undefined>(undefined);
 let loadedUser = ref<I_UserEntry | undefined>(undefined);
 let loadedStructure = ref<I_DataStructure | undefined>(undefined);
@@ -41,6 +44,60 @@ function setToken(token: string | null) {
     localStorage.setItem('authToken', token);
   } else {
     localStorage.removeItem('authToken');
+  }
+}
+
+watch(authToken, (newToken, oldToken) => {
+  if (newToken !== null && realtimeUpdates.value === true) {
+    apiClient.setRealTimeSync(true);
+  } else {
+    apiClient.setRealTimeSync(false);
+  }
+})
+
+watch(realtimeUpdates, (newVal, oldVal) => {
+  if (newVal && authToken.value !== null) {
+    fetchData();
+    apiClient.setRealTimeSync(true);
+  } else {
+    apiClient.setRealTimeSync(false);
+  }
+})
+
+function handleNetworkEvent(event: I_EventString, data: any) {
+  let msg = data as I_WsMessage;
+  switch (event) {
+    case "newUser":
+    case "changedUser":
+    case "removedUser":
+      apiClient.listUsers().then(users => {
+        userArray.value = users;
+      })
+      break;
+
+    case "newStructure":
+    case "changedStructure":
+    case "removedStructure":
+      apiClient.getStructures().then(structures => {
+        structureArray.value = structures;
+      })
+      break;
+
+    case "newDocument":
+    case "removedDocument":
+      apiClient.listDocuments().then(documents => {
+        docArray.value = documents;
+      })
+      break;
+
+    case "changedDocument":
+      break;
+
+    case "confirmUnsubscription":
+      break;
+
+    case "confirmSubscription":
+      break;
   }
 }
 
@@ -57,7 +114,7 @@ async function handleDocumentSelected(documentID: string) {
   console.log("Document selected:", documentID);
   shownComponent.value = DisplayComponent.documentViewer;
 
-  loadedDocument.value = docArray.value.find((document:I_DocumentEntry) => document._id === documentID)
+  loadedDocument.value = docArray.value.find((document: I_DocumentEntry) => document._id === documentID)
   console.log("Loaded document:", loadedDocument.value);
 }
 
@@ -71,31 +128,31 @@ async function handleStructureSelected(structureID: string) {
 
 async function handleDocumentRemoved(documentID: string) {
   apiClient.removeDocument(documentID)
-    .then(() => {
-      if (loadedDocument.value && loadedDocument.value._id === documentID) {
-        loadedDocument.value = undefined;
-      }
-      fetchData();
-    })
-    .catch(error => {
-      console.error("Error removing document:", error);
-      handleApiError(error, "removing document");
-    });
+      .then(() => {
+        if (loadedDocument.value && loadedDocument.value._id === documentID) {
+          loadedDocument.value = undefined;
+        }
+        fetchData();
+      })
+      .catch(error => {
+        console.error("Error removing document:", error);
+        handleApiError(error, "removing document");
+      });
 }
 
 async function handleStructureRemoved(structureID: string) {
   apiClient.removeStructure(structureID)
-    .then(() => {
-      if (loadedStructure.value && loadedStructure.value._id?.toString() === structureID) {
-        loadedStructure.value = undefined;
-        shownComponent.value = DisplayComponent.documentViewer;
-      }
-      fetchData();
-    })
-    .catch(error => {
-      console.error("Error removing structure:", error);
-      handleApiError(error, "removing structure");
-    });
+      .then(() => {
+        if (loadedStructure.value && loadedStructure.value._id?.toString() === structureID) {
+          loadedStructure.value = undefined;
+          shownComponent.value = DisplayComponent.documentViewer;
+        }
+        fetchData();
+      })
+      .catch(error => {
+        console.error("Error removing structure:", error);
+        handleApiError(error, "removing structure");
+      });
 }
 
 async function fetchData() {
@@ -132,7 +189,7 @@ async function fetchData() {
   }
 }
 
-function handleLoginSuccess(loginInformation : I_LoginResponse | null) {
+function handleLoginSuccess(loginInformation: I_LoginResponse | null) {
   if (loginInformation !== null) {
     console.log("Login success, setting token");
     setToken(loginInformation.token);
@@ -140,8 +197,7 @@ function handleLoginSuccess(loginInformation : I_LoginResponse | null) {
       localStorage.setItem('isAdmin', String(loginInformation.isAdmin));
     }
     fetchData();
-  }
-  else {
+  } else {
     console.log("Login failed, token not set");
     setToken(null);
   }
@@ -185,39 +241,39 @@ function handleUserUpdate(userID: string, field: string, value: any) {
   }
 
   apiClient.updateUser(userID, {[field]: value})
-    .then((response) => {
-      console.log("User updated successfully, response:", response);
-      fetchData().then(() => {
-        handleUserSelected(userID);
-      });
-    })
-    .catch(error => {
-      console.error("Error updating user:", error);
-      handleApiError(error, "updating user");
+      .then((response) => {
+        console.log("User updated successfully, response:", response);
+        fetchData().then(() => {
+          handleUserSelected(userID);
+        });
+      })
+      .catch(error => {
+        console.error("Error updating user:", error);
+        handleApiError(error, "updating user");
 
-      if (loadedUser.value && loadedUser.value._id === userID) {
-        const originalUser = userArray.value.find(u => u._id === userID);
-        if (originalUser) {
-          loadedUser.value = { ...originalUser };
+        if (loadedUser.value && loadedUser.value._id === userID) {
+          const originalUser = userArray.value.find(u => u._id === userID);
+          if (originalUser) {
+            loadedUser.value = {...originalUser};
+          }
         }
-      }
 
-    });
+      });
 }
 
 function handleUserRemoved(userID: string) {
   apiClient.removeUser(userID)
-    .then(() => {
-      if (loadedUser.value && loadedUser.value._id === userID) {
-        loadedUser.value = undefined;
-        shownComponent.value = DisplayComponent.documentViewer;
-      }
-      fetchData();
-    })
-    .catch(error => {
-      console.error("Error removing user:", error);
-      handleApiError(error, "removing user");
-    });
+      .then(() => {
+        if (loadedUser.value && loadedUser.value._id === userID) {
+          loadedUser.value = undefined;
+          shownComponent.value = DisplayComponent.documentViewer;
+        }
+        fetchData();
+      })
+      .catch(error => {
+        console.error("Error removing user:", error);
+        handleApiError(error, "removing user");
+      });
 }
 
 function handleLogout() {
@@ -238,7 +294,7 @@ function handleApiError(error: unknown, context: string = "API operation") {
   console.error(`Error during ${context}:`, error);
 
   if (error instanceof Error) {
-    if (error.message.includes('401') || error.message.includes('Unauthorized') || 
+    if (error.message.includes('401') || error.message.includes('Unauthorized') ||
         error.message.includes('403') || error.message.includes('Forbidden')) {
       setToken(null);
       showLoginDialog.value = true;
@@ -251,6 +307,11 @@ function handleApiError(error: unknown, context: string = "API operation") {
     }
   }
 }
+
+onMounted(async () => {
+  await fetchData();
+  await apiClient.subscribe();
+})
 </script>
 
 <template>
@@ -268,13 +329,28 @@ function handleApiError(error: unknown, context: string = "API operation") {
 
         <v-app-bar-title>DocPouch Administration</v-app-bar-title>
         <v-spacer></v-spacer>
+        <div v-if="isLoggedIn" class="d-flex align-center mr-4">
+          <v-switch
+              v-model="realtimeUpdates"
+              color="white"
+              hide-details
+              density="compact"
+              class="mt-0 pt-0"
+          >
+            <template v-slot:label>
+              <span class="text-white">Realtime Updates</span>
+            </template>
+          </v-switch>
+        </div>
 
         <v-btn v-if="isLoggedIn" @click="handleLogout" variant="text" color="white">
-          <v-icon start>mdi-logout</v-icon>Logout
+          <v-icon start>mdi-logout</v-icon>
+          Logout
         </v-btn>
       </v-app-bar>
       <v-alert v-if="isLoggedIn" type="info" variant="tonal" closable class="ma-4">
-        <strong>Welcome to DocPouch Administration</strong> — an open-source document management system that allows you to organize, edit, and share structured data. This panel lets you manage users, data structures, and documents.
+        <strong>Welcome to DocPouch Administration</strong> — an open-source document management system that allows you
+        to organize, edit, and share structured data. This panel lets you manage users, data structures, and documents.
       </v-alert>
 
       <v-container class="h-100 px-4">
@@ -287,12 +363,14 @@ function handleApiError(error: unknown, context: string = "API operation") {
                   Users
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
-                  <UserPad 
-                    @user-selected="handleUserSelected" 
-                    :userlist="userArray" 
-                    :api-client="apiClient" 
-                    @user-list-changed="fetchData"
-                    @user-removed="handleUserRemoved"
+                  <UserPad
+                      @user-selected="handleUserSelected"
+                      :userlist="userArray"
+                      :api-client="apiClient"
+                      @user-list-changed="fetchData"
+                      @user-removed="handleUserRemoved"
+                      :department-list="userArray.map(user => user.department)"
+                      :group-list="userArray.map(user => user.group)"
                   />
                 </v-expansion-panel-text>
               </v-expansion-panel>
@@ -303,13 +381,13 @@ function handleApiError(error: unknown, context: string = "API operation") {
                   Data Structures
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
-                  <StructurePad 
-                    @structure-selected="handleStructureSelected" 
-                    :structurelist="structureArray" 
-                    :api-client="apiClient" 
-                    :is-admin="isAdmin"
-                    @structure-list-changed="fetchData"
-                    @structure-removed="handleStructureRemoved"
+                  <StructurePad
+                      @structure-selected="handleStructureSelected"
+                      :structurelist="structureArray"
+                      :api-client="apiClient"
+                      :is-admin="isAdmin"
+                      @structure-list-changed="fetchData"
+                      @structure-removed="handleStructureRemoved"
                   />
                 </v-expansion-panel-text>
               </v-expansion-panel>
@@ -320,13 +398,13 @@ function handleApiError(error: unknown, context: string = "API operation") {
                   Documents
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
-                  <DocumentPad 
-                    @document-selected="handleDocumentSelected"
-                    :userlist="userArray"
-                    :documentList="docArray"
-                    :api-client="apiClient" 
-                    @document-list-changed="fetchData"
-                    @document-removed="handleDocumentRemoved"
+                  <DocumentPad
+                      @document-selected="handleDocumentSelected"
+                      :userlist="userArray"
+                      :documentList="docArray"
+                      :api-client="apiClient"
+                      @document-list-changed="fetchData"
+                      @document-removed="handleDocumentRemoved"
                   />
                 </v-expansion-panel-text>
               </v-expansion-panel>
@@ -334,22 +412,23 @@ function handleApiError(error: unknown, context: string = "API operation") {
           </v-col>
 
           <v-col cols="6">
-            <DocumentDisplay 
-              id="2" 
-              :object="loadedDocument" 
-              v-show="shownComponent === DisplayComponent.documentViewer"
+            <DocumentDisplay
+                id="2"
+                :object="loadedDocument"
+                v-show="shownComponent === DisplayComponent.documentViewer"
             />
             <UserDisplay
-              :user="loadedUser"
-              :department-list="[...new Set(userArray.map(user => user.department))]"
-              :group-list="[...new Set(userArray.map(user => user.group))]"
-              @user-updated="handleUserUpdate"
-              v-if="shownComponent === DisplayComponent.userViewer"
+                :user="loadedUser"
+                :department-list="[...new Set(userArray.map(user => user.department))]"
+                :group-list="[...new Set(userArray.map(user => user.group))]"
+                @user-updated="handleUserUpdate"
+                v-if="shownComponent === DisplayComponent.userViewer"
             />
             <StructureDisplay
-              :structure="loadedStructure"
-              :is-admin="isAdmin"
-              v-if="shownComponent === DisplayComponent.structureViewer"
+                :displayStructure="loadedStructure"
+                :structure-list="structureArray"
+                :is-admin="isAdmin"
+                v-if="shownComponent === DisplayComponent.structureViewer"
             />
           </v-col>
         </v-row>
@@ -358,12 +437,12 @@ function handleApiError(error: unknown, context: string = "API operation") {
         <div class="text-center w-100">
           <div class="text-caption text-grey">
             DocPouch is provided under the MIT License. This software is provided "as is", without warranty of any kind.
-            <v-btn 
-              variant="text" 
-              density="compact" 
-              color="primary" 
-              href="https://opensource.org/licenses/MIT" 
-              target="_blank"
+            <v-btn
+                variant="text"
+                density="compact"
+                color="primary"
+                href="https://opensource.org/licenses/MIT"
+                target="_blank"
             >
               View License
             </v-btn>
@@ -371,8 +450,8 @@ function handleApiError(error: unknown, context: string = "API operation") {
         </div>
       </v-footer>
       <LoginDialog v-model:show="showLoginDialog" :api-client="apiClient" @login-success="handleLoginSuccess"
-          @update:show="handleDialogUpdate"/>
-      <AboutDialog :show="showAboutDialog" @close="showAboutDialog = false" />
+                   @update:show="handleDialogUpdate"/>
+      <AboutDialog :show="showAboutDialog" @close="showAboutDialog = false"/>
     </v-main>
   </v-app>
 </template>

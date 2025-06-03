@@ -349,7 +349,7 @@ export default class NeDbWrapper {
                     return;
                 }
 
-                this.structures.remove({id: structureID}).then((numRemoved: number) => {
+                this.structures.remove({_id: structureID}).then((numRemoved: number) => {
                     if (numRemoved > 0) {
                         this.logger.info("Removed structure:" + JSON.stringify(structureID));
                         resolve(numRemoved);

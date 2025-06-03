@@ -18,10 +18,22 @@ function handleOK() {
 <template>
   <v-dialog v-model="props.show" persistent max-width="400px">
     <v-card>
-      <v-card-title class="text-h5">docPouch V{{packageJson.version}}</v-card-title>
-      <v-card-text>
-        [Insert short description, authorship information and link to Github Repository]
-        Client Version: {{packageJson.dependencies['docpouch-client']}}
+      <v-card-title class="text-h5 bg-blue-darken-2">docPouch V{{ packageJson.version }}</v-card-title>
+      <v-card-text class="text-sm-body-2">
+        <p>DocPouch is a lightweight, document-based database with user management, designed for development and testing
+          environments.</p>
+        <p class="mt-2">
+          Key Features:<br>
+          Simple storage of structured documents in JSON format.<br>
+          User management capabilities.<br>
+          RESTful API for easy integration.<br>
+          File and text-based, prioritizing simplicity over performance.<br>
+        </p>
+        <p class="mt-2">
+          client version: {{ packageJson.dependencies['docpouch-client'] }}<br>
+          <a href="https://github.com/BFH-JTF/doc-pouch" target="_blank">DocPouch Github</a><br>
+          <a href="https://github.com/BFH-JTF/docpouch-client" target="_blank">DocPouch Client Github</a>
+        </p>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
