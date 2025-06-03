@@ -94,13 +94,13 @@ export interface I_StructureUpdate {
     _id: string;
     name?: string;
     description?: string;
-    fields?: any[];
+    fields?: I_StructureField[];
 }
 
 export interface I_StructureCreation {
     name: string;
     description?: string;
-    fields: any[];
+    fields: I_StructureField[];
 }
 
 export interface I_StructureField {

@@ -89,8 +89,8 @@ A fitting document structure for houses could look like this:
             "type": "number",
         },
         {
-            "name": "Average age of inhabitants",
-            "type": "number",
+            "name": "Is connected to the gas grid",
+            "type": "boolean",
         }
     ]
 }
