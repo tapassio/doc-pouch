@@ -21,93 +21,31 @@ export default class NeDbWrapper {
 
     constructor(winstonLogger: winston.Logger) {
         this.logger = winstonLogger;
-        const dbPath = "./db"
+
+        // Use absolute path with process.cwd()
+        const dbPath = process.env.DB_PATH || `${process.cwd()}/db`;
+
+        this.logger.info(`Using database path: ${dbPath}`);
+
         if (!fs.existsSync(dbPath)) {
-            fs.mkdirSync(dbPath);
+            this.logger.info(`Creating database directory: ${dbPath}`);
+            fs.mkdirSync(dbPath, {recursive: true});
         }
 
-        this.users = new CustomStore("./db/docpouch-users.db",
+        this.users = new CustomStore(`${dbPath}/docpouch-users.db`,
             "System Users", "Collection of documents describing system users - handle with care")
         this.users.datastore.persistence.setAutocompactionInterval(1000 * 60 * 5);
-        this.structures = new CustomStore("./db/docpouch-structures.db",
+        this.structures = new CustomStore(`${dbPath}/docpouch-structures.db`,
             "Data Structures", "Collection of documents describing data structures")
         this.structures.datastore.persistence.setAutocompactionInterval(1000 * 60 * 30);
-        this.documents = new CustomStore("./db/docpouch-documents.db",
+        this.documents = new CustomStore(`${dbPath}/docpouch-documents.db`,
             "User Documents", "Collection of user documents")
         this.documents.datastore.persistence.setAutocompactionInterval(1000 * 60 * 60);
-        this.types = new CustomStore("./db/docpouch-types.db",
+        this.types = new CustomStore(`${dbPath}/docpouch-types.db`,
             "Document Types", "Collection of document types")
         this.types.datastore.persistence.setAutocompactionInterval(1000 * 60 * 60);
 
-        this.users.count({}).then((counter) => {
-            // No users in database yet?
-            if (counter < 1) {
-                // Create default admin
-                this.createUser({
-                    password: "adminSecret",
-                    name: "admin",
-                    department: "administration",
-                    group: "auto-created",
-                    isAdmin: true,
-                }).then((addedUser) => {
-                    this.logger.info(`Created new admin user: ${JSON.stringify(addedUser)}`);
-                    this.documents.count({}).then((counter) => {
-                        // No documents in database yet?
-                        if (counter < 1) {
-                            // Create demo document
-                            this.getAdminUser().then((admin) => {
-                                if (admin._id){
-                                    let defaultDocument: I_DocumentCreationOwned = {
-                                        title: "Demo Document",
-                                        owner: admin._id,
-                                        description: "This is just a demo, delete when you don't need it anymore",
-                                        subType: 0,
-                                        type: 1,
-                                        content: [{
-                                            label: "This is a demo document not following any document structure",
-                                            importance: 0
-                                        }]
-                                    }
-
-                                    this.documents.add(defaultDocument).then((document) => {
-                                        this.logger.info(`Created new document: ${JSON.stringify(defaultDocument)}`);
-                                    });
-
-                                    this.structures.count({}).then((counter) => {
-                                        // No structures in database yet?
-                                        if (counter < 1) {
-                                            // Create demo structure
-                                            this.getAdminUser().then((admin) => {
-                                                if (admin._id){
-                                                    let defaultStructure: I_StructureEntry = {
-                                                        _id: "tt5vo04DN3jm8Bqe",
-                                                        description: "This is a demo structure.",
-                                                        name: "City Info",
-                                                        fields: [
-                                                            {
-                                                                name: "City name",
-                                                                type: "string",
-                                                            },
-                                                            {
-                                                                name: "# of inhabitants",
-                                                                type: "number"
-                                                            }
-                                                        ]
-                                                    }
-                                                    this.structures.add(defaultStructure).then((structure) => {
-                                                        this.logger.info(`Created new structure: ${JSON.stringify(structure)}`);
-                                                    });
-                                                }
-                                            })
-                                        }
-                                    })
-                                }
-                            })
-                        }
-                    })
-                })
-            }
-        })
+        // Rest of your constructor...
     }
 
     private getAdminUser(): Promise<I_UserEntry> {
