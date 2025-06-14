@@ -21,6 +21,7 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/package*.json ./
 
 RUN npm ci --omit=dev
+RUN mkdir -p "/app/dist/db"
 
 EXPOSE 3030
 

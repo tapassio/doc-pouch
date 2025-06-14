@@ -17,7 +17,7 @@ import DocumentPad from "./components/DocumentPad.vue";
 import StructureDisplay from "./components/StructureDisplay.vue";
 import docPouchLogo from './assets/docPouch.png';
 import AboutDialog from "./components/AboutDialog.vue";
-import type {I_EventString} from "../../../../docpouch-client/dist/types";
+import type {I_EventString} from "docpouch-client/dist/types";
 import TypePad from "./components/TypePad.vue";
 
 const serverPort = 3030;
@@ -42,7 +42,7 @@ const realtimeUpdates = ref(false);
 let loadedDocument = ref<I_DocumentEntry | undefined>(undefined);
 let loadedUser = ref<I_UserEntry | undefined>(undefined);
 let loadedStructure = ref<I_DataStructure | undefined>(undefined);
-const isAdmin = computed(() => {
+let isAdmin = computed(() => {
   if (authToken.value === null) {
     return false;
   }
@@ -228,9 +228,6 @@ onMounted(async () => {
   if (storedToken) {
     console.log("Found token in local storage. Setting it.");
     setToken(storedToken);
-    if (storedIsAdmin !== null) {
-      isAdmin.value = storedIsAdmin === 'true';
-    }
 
     await fetchData();
   }
