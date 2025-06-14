@@ -109,6 +109,17 @@ export interface I_StructureField {
     items?: string;
 }
 
+// Document type related types
+export interface I_DocumentType {
+    _id?: string;
+    type: number;
+    subType: number;
+    name: string;
+    description?: string;
+    defaultStructureID?: string;
+}
+
+
 // Websocket-related types
 export interface I_WsMessage {
     newDocument?: I_DocumentEntry;
@@ -122,6 +133,7 @@ export interface I_WsMessage {
     confirmUnsubscription?: boolean;
     heartbeatPing?: number;
     heartbeatPong?: number;
+    newType?: I_DocumentType;
 }
 
 export interface I_Client {

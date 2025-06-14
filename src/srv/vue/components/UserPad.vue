@@ -9,6 +9,7 @@ const props = defineProps<{
   apiClient: DbPouchClient;
   departmentList: string[];
   groupList: string[];
+  isAdmin: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -136,7 +137,7 @@ const hasActiveFilters = computed(() => {
 <template>
     <div class="d-flex flex-column">
       <!-- Filter Section -->
-      <v-card class="mb-3" variant="outlined">
+      <v-card v-if="isAdmin" class="mb-3" variant="outlined">
         <v-card-title class="text-subtitle-1 pa-3">
           <v-icon icon="mdi-filter" class="mr-2"></v-icon>
           Filters
@@ -242,7 +243,7 @@ const hasActiveFilters = computed(() => {
         </v-list>
       </div>
 
-      <div class="d-flex justify-end mt-3">
+      <div v-if="isAdmin" class="d-flex justify-end mt-3">
         <v-btn color="primary" class="mr-2" prepend-icon="mdi-plus" @click="addNewUser">New</v-btn>
         <v-btn color="error" prepend-icon="mdi-delete" @click="confirmDelete" :disabled="!selectedUserID">Remove</v-btn>
       </div>

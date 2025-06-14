@@ -3,11 +3,14 @@ import NeDbWrapper from "./NeDbWrapper.js";
 import winston from "winston";
 import fs from "fs";
 
-const PORT = 3030;
 const corsOptions = {
     origin: "*",
     credentials: true
 }
+
+// use environment variables to configure port
+const PORT = parseInt(process.env.PORT || '3030');
+
 
 const dbPath = "./log"
 if (!fs.existsSync(dbPath)) {

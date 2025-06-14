@@ -51,7 +51,7 @@ async function handleLogin() {
 </script>
 
 <template>
-  <v-dialog v-model="show" persistent max-width="400px">
+  <v-dialog v-model="props.show" persistent max-width="400px" @input="$emit('update:show', $event)">
     <v-card>
       <v-card-title class="text-h5">Login Required</v-card-title>
       <v-card-text>

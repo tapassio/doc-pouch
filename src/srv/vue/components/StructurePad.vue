@@ -84,7 +84,7 @@ const selectStructure = (structureID: string | undefined) => {
       </v-list>
     </div>
 
-    <div class="d-flex justify-end mt-3">
+    <div v-if="isAdmin" class="d-flex justify-end mt-3">
       <v-btn color="error" prepend-icon="mdi-delete" @click="confirmDelete" :disabled="!selectedStructureID || !props.isAdmin">Remove</v-btn>
     </div>
   </div>

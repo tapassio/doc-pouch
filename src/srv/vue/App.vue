@@ -4,7 +4,13 @@ import DocumentDisplay from "./components/DocumentDisplay.vue";
 import LoginDialog from "./components/LoginDialog.vue";
 import {ref, onMounted, computed, watch} from "vue";
 import DbPouchClient from "docpouch-client";
-import type {I_DocumentEntry, I_UserEntry, I_DataStructure, I_LoginResponse, I_WsMessage} from "../../types.ts";
+import type {
+  I_DocumentEntry,
+  I_UserEntry,
+  I_DataStructure,
+  I_LoginResponse,
+  I_DocumentType
+} from "../../types.ts";
 import UserDisplay from "./components/UserDisplay.vue";
 import StructurePad from "./components/StructurePad.vue";
 import DocumentPad from "./components/DocumentPad.vue";
@@ -12,6 +18,7 @@ import StructureDisplay from "./components/StructureDisplay.vue";
 import docPouchLogo from './assets/docPouch.png';
 import AboutDialog from "./components/AboutDialog.vue";
 import type {I_EventString} from "../../../../docpouch-client/dist/types";
+import TypePad from "./components/TypePad.vue";
 
 const serverPort = 3030;
 enum DisplayComponent {
@@ -25,33 +32,41 @@ const expandedPanel = ref('documents'); // Default to users panel being open
 const userArray = ref(<I_UserEntry[]>[]);
 const docArray = ref(<I_DocumentEntry[]>[]);
 const structureArray = ref(<I_DataStructure[]>[]);
+const typeArray = ref(<I_DocumentType[]>[]);
 let shownComponent = ref(DisplayComponent.documentViewer);
 const apiClient = new DbPouchClient(window.location.href.slice(0, window.location.href.lastIndexOf('/')), serverPort, handleNetworkEvent);
 const isLoggedIn = computed(() => authToken.value !== null);
-const isAdmin = ref(false);
 const showLoginDialog = ref(true)
 const showAboutDialog = ref(false)
 const realtimeUpdates = ref(false);
 let loadedDocument = ref<I_DocumentEntry | undefined>(undefined);
 let loadedUser = ref<I_UserEntry | undefined>(undefined);
 let loadedStructure = ref<I_DataStructure | undefined>(undefined);
+const isAdmin = computed(() => {
+  if (authToken.value === null) {
+    return false;
+  }
+  return localStorage.getItem('isAdmin') === 'true';
+})
 
 function setToken(token: string | null) {
   console.log("Setting token:", token ? "token present" : "null");
   authToken.value = token;
   apiClient.setToken(token);
-  if (token) {
+  if (token)
     localStorage.setItem('authToken', token);
-  } else {
+  else
     localStorage.removeItem('authToken');
-  }
 }
 
 watch(authToken, (newToken, oldToken) => {
   if (newToken !== null && realtimeUpdates.value === true) {
+    fetchData();
     apiClient.setRealTimeSync(true);
+    console.log("Activating realtime updates.")
   } else {
     apiClient.setRealTimeSync(false);
+    console.log("De-activating realtime updates.")
   }
 })
 
@@ -59,13 +74,15 @@ watch(realtimeUpdates, (newVal, oldVal) => {
   if (newVal && authToken.value !== null) {
     fetchData();
     apiClient.setRealTimeSync(true);
+    console.log("Activating realtime updates.")
   } else {
     apiClient.setRealTimeSync(false);
+    console.log("De-activating realtime updates.")
   }
 })
 
+
 function handleNetworkEvent(event: I_EventString, data: any) {
-  let msg = data as I_WsMessage;
   switch (event) {
     case "newUser":
     case "changedUser":
@@ -93,11 +110,6 @@ function handleNetworkEvent(event: I_EventString, data: any) {
     case "changedDocument":
       break;
 
-    case "confirmUnsubscription":
-      break;
-
-    case "confirmSubscription":
-      break;
   }
 }
 
@@ -105,17 +117,8 @@ async function handleUserSelected(userID: string) {
   console.log("User selected:", userID);
   shownComponent.value = DisplayComponent.userViewer;
   console.log("Changed shown component to:", shownComponent.value, "DisplayComponent.userViewer =", DisplayComponent.userViewer);
-
   loadedUser.value = userArray.value.find(user => user._id === userID);
   console.log("Loaded user:", loadedUser.value);
-}
-
-async function handleDocumentSelected(documentID: string) {
-  console.log("Document selected:", documentID);
-  shownComponent.value = DisplayComponent.documentViewer;
-
-  loadedDocument.value = docArray.value.find((document: I_DocumentEntry) => document._id === documentID)
-  console.log("Loaded document:", loadedDocument.value);
 }
 
 async function handleStructureSelected(structureID: string) {
@@ -138,6 +141,11 @@ async function handleDocumentRemoved(documentID: string) {
         console.error("Error removing document:", error);
         handleApiError(error, "removing document");
       });
+}
+
+async function handleDocumentSelected(documentID: string) {
+  shownComponent.value = DisplayComponent.documentViewer;
+  loadedDocument.value = docArray.value.find((document: I_DocumentEntry) => document._id === documentID)
 }
 
 async function handleStructureRemoved(structureID: string) {
@@ -173,6 +181,7 @@ async function fetchData() {
   // Fetch document list
   console.debug("Fetching documents");
   try {
+    console.log("Listing documents")
     docArray.value = await apiClient.listDocuments();
   } catch (error) {
     handleApiError(error, "fetching documents");
@@ -186,6 +195,15 @@ async function fetchData() {
   } catch (error) {
     handleApiError(error, "fetching structures");
     structureArray.value = [];
+  }
+
+  // Fetch Types
+  console.debug("Fetching types");
+  try {
+    typeArray.value = await apiClient.getTypes();
+  } catch (error) {
+    handleApiError(error, "fetching types");
+    typeArray.value = [];
   }
 }
 
@@ -232,8 +250,6 @@ function handleDialogUpdate(isUnknown: boolean) {
 }
 
 function handleUserUpdate(userID: string, field: string, value: any) {
-  console.log(`App.vue - handleUserUpdate called with: ${userID}, ${field}, ${value}`);
-
   // Added safety checks
   if (userID === undefined || field === undefined) {
     console.error('Invalid parameters for user update:', {userID, field, value});
@@ -307,11 +323,6 @@ function handleApiError(error: unknown, context: string = "API operation") {
     }
   }
 }
-
-onMounted(async () => {
-  await fetchData();
-  await apiClient.subscribe();
-})
 </script>
 
 <template>
@@ -371,7 +382,22 @@ onMounted(async () => {
                       @user-removed="handleUserRemoved"
                       :department-list="userArray.map(user => user.department)"
                       :group-list="userArray.map(user => user.group)"
+                      :is-admin="isAdmin"
                   />
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+
+              <v-expansion-panel value="types">
+                <v-expansion-panel-title>
+                  <v-icon start>mdi-account-group</v-icon>
+                  Document Types
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <TypePad :type-list="typeArray"
+                           :structure-list="structureArray"
+                           :api-client="apiClient"
+                           :is-admin="isAdmin"
+                           @type-list-changed="fetchData"/>
                 </v-expansion-panel-text>
               </v-expansion-panel>
 
@@ -449,7 +475,8 @@ onMounted(async () => {
           </div>
         </div>
       </v-footer>
-      <LoginDialog v-model:show="showLoginDialog" :api-client="apiClient" @login-success="handleLoginSuccess"
+      <LoginDialog v-if="!authToken" v-model:show="showLoginDialog"
+                   :api-client="apiClient" @login-success="handleLoginSuccess"
                    @update:show="handleDialogUpdate"/>
       <AboutDialog :show="showAboutDialog" @close="showAboutDialog = false"/>
     </v-main>

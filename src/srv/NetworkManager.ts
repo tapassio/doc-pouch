@@ -3,20 +3,21 @@ import express from 'express';
 import path, {dirname} from 'path';
 import {fileURLToPath} from 'url';
 import cors from 'cors';
-import type {I_UserEntry, I_UserUpdate} from "../types.ts";
+import type {I_DocumentType, I_UserEntry, I_UserUpdate} from "../types.ts";
 import NeDbWrapper from "./NeDbWrapper.js";
 import winston from "winston";
 import jwt from "jsonwebtoken"
 import SchemaValidator from "./SchemaValidator.js";
 import IoSocketServer from "./IoSocketServer.js";
 import * as http from "node:http";
+import * as os from "node:os";
 
 const JWTOptions = {
     secret: "ThisIsMyVeryOwnAndCreativeSecret",
     algorithm: "HS512"
 };
 
-export default class NetworkManager{
+export default class NetworkManager {
     corsOptions: any;
     port: number;
     private readonly expressApp: express.Application;
@@ -26,7 +27,10 @@ export default class NetworkManager{
     logger: winston.Logger
     validator: SchemaValidator
 
-    constructor(logger: winston.Logger, dataManager: NeDbWrapper, port: number, corsOptions = {origin: "*", credentials: true}) {
+    constructor(logger: winston.Logger, dataManager: NeDbWrapper, port: number, corsOptions = {
+        origin: "*",
+        credentials: true
+    }) {
         this.corsOptions = corsOptions;
         this.port = port;
         this.expressApp = express();
@@ -34,7 +38,22 @@ export default class NetworkManager{
         this.logger = logger;
         this.validator = new SchemaValidator(logger);
         this.webServer = this.expressApp.listen(this.port, () => {
-            this.logger.log("info", "Server is running on http://localhost:" + this.port);
+            const networkInterfaces = os.networkInterfaces();
+            let hostAddress = 'localhost';
+
+            for (const key in networkInterfaces) {
+                if (key.includes('docker') || key.includes('br-') || key.toLowerCase().includes('vethernet')) continue;
+                const addresses = networkInterfaces[key];
+                if (!addresses) continue;
+                for (const address of addresses) {
+                    if (address.family === 'IPv4' && !address.internal) {
+                        hostAddress = address.address;
+                        break;
+                    }
+                }
+            }
+
+            this.logger.log("info", `Server is running on http://${hostAddress}:${this.port}`);
         });
         this.socketServer = new IoSocketServer(this, JWTOptions)
         this.initializeExpress();
@@ -47,19 +66,17 @@ export default class NetworkManager{
         this.expressApp.use(cors(this.corsOptions));
         this.expressApp.disable('etag'); // Disable ETag header to prevent caching of responses
 
-        this.expressApp.get('/users/list', this.authenticateJWT.bind(this), (req, res) => {
-            // Use the new getUsers method with access control
+        this.expressApp.get('/users/list', this.authenticateJWT, (req, res) => {
             this.dataManager.getUsers(req.userid)
                 .then((users: I_UserEntry[]) => {
                     res.status(200).json(users);
                 }).catch((error) => {
-                    res.status(500).json({error: error.message});
-                });
+                res.status(500).json({error: error.message});
+            });
         });
 
-        this.expressApp.post("/users/create", this.authenticateJWT.bind(this), (req, res) => {
-            if (this.validator.validate("userCreation", req.body))
-            {
+        this.expressApp.post("/users/create", this.authenticateJWT, (req, res) => {
+            if (this.validator.validate("userCreation", req.body)) {
                 this.dataManager.isAdmin(req.userid).then((isAdmin) => {
                     if (isAdmin) {
                         this.dataManager.createUser(req.body)
@@ -74,34 +91,51 @@ export default class NetworkManager{
                     } else
                         res.status(401).json({error: "Not authorized to create users"});
                 })
-            }
-            else
+            } else
                 res.status(503).json({error: "Invalid user data"});
         })
 
-        this.expressApp.post("/users/login", (req:Request, res:Response) => {
-            if (this.validator.validate("userLogin", req.body)) {
-                this.dataManager.validateUser(req.body.name, req.body.password)
-                    .then((user: I_UserEntry) => {
-                        if (user) {
-                            let token = jwt.sign({id: user._id}, JWTOptions.secret, {
-                                algorithm: "HS512",
-                                expiresIn: "4h",
-                                issuer: "DocPouch"
-                            });
-                            res.json({token: token, isAdmin: user.isAdmin || false});
-                        } else
-                            res.status(403).json({error: "Invalid user or password"});
-                    })
-                    .catch((reason) => {
-                        res.status(500).json({error: reason});
-                    })
+        this.expressApp.post("/users/login", (req: Request, res: Response) => {
+            this.logger.info("Login request received");
+
+            try {
+                const isValid = this.validator.validate("userLogin", req.body);
+                this.logger.debug(`Validation result: ${isValid}`);
+
+                if (isValid) {
+                    this.logger.debug("Validation passed, calling validateUser");
+                    this.dataManager.validateUser(req.body.name, req.body.password)
+                        .then((user: I_UserEntry) => {
+                            this.logger.debug("User validation result:", user ? "User found" : "User not found");
+                            if (user) {
+                                this.logger.info("Creating JWT token");
+                                let token = jwt.sign({id: user._id}, JWTOptions.secret, {
+                                    algorithm: "HS512",
+                                    expiresIn: "4h",
+                                    issuer: "DocPouch"
+                                });
+                                this.logger.debug("Sending successful response");
+                                res.json({token: token, isAdmin: user.isAdmin || false});
+                            } else {
+                                this.logger.warn("Sending 403 - Invalid credentials");
+                                res.status(403).json({error: "Invalid user or password"});
+                            }
+                        })
+                        .catch((reason) => {
+                            this.logger.error(`Error in validateUser: ${reason}`);
+                            res.status(500).json({error: reason});
+                        })
+                } else {
+                    this.logger.error("Validation failed - Invalid user data");
+                    res.status(503).json({error: "Invalid user data"});
+                }
+            } catch (error) {
+                this.logger.error("Unexpected error in login route:", error);
+                res.status(500).json({error: "Internal server error"});
             }
-            else
-                res.status(503).json({error: "Invalid user data"});
         })
 
-        this.expressApp.patch("/users/update/:userID", this.authenticateJWT.bind(this), (req: Request, res:Response) => {
+        this.expressApp.patch("/users/update/:userID", this.authenticateJWT, (req: Request, res: Response) => {
             if (this.validator.validate("userUpdate", req.body)) {
                 const userID = req.params.userID;
                 const checkPermission = async () => {
@@ -149,10 +183,10 @@ export default class NetworkManager{
                 res.status(503).json({error: "Invalid user data"});
         });
 
-        this.expressApp.delete("/users/remove/:userID", this.authenticateJWT.bind(this), (req, res) => {
-            this.dataManager.isAdmin(req.userid).then((isAdmin:boolean) => {
+        this.expressApp.delete("/users/remove/:userID", this.authenticateJWT, (req, res) => {
+            this.dataManager.isAdmin(req.userid).then((isAdmin: boolean) => {
                 if (!isAdmin)
-                    return res.status(401).json({ error: "Not authorized to remove this user" });
+                    return res.status(401).json({error: "Not authorized to remove this user"});
                 else {
                     this.dataManager.removeUser(req.params.userID).then(() => {
                         this.socketServer.sendEventToAdmins(req.socketID, "removedUser", {removedID: req.params.userID})
@@ -165,8 +199,8 @@ export default class NetworkManager{
         })
 
         // Document endpoints with access control
-        this.expressApp.get("/docs/list", this.authenticateJWT.bind(this), (req, res) => {
-            this.dataManager.getDocuments(req.userid)
+        this.expressApp.get("/docs/list", this.authenticateJWT, (req, res) => {
+            this.dataManager.getAllDocuments(req.userid)
                 .then((documents) => {
                     res.status(200).json(documents);
                 })
@@ -175,7 +209,7 @@ export default class NetworkManager{
                 });
         });
 
-        this.expressApp.post("/docs/fetch", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.post("/docs/fetch", this.authenticateJWT, (req, res) => {
             let queryObject = req.body;
             this.validator.validate("documentFetch", queryObject);
 
@@ -194,12 +228,12 @@ export default class NetworkManager{
                 });
         });
 
-        this.expressApp.post("/docs/create", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.post("/docs/create", this.authenticateJWT, (req, res) => {
             if (this.validator.validate("documentCreation", req.body)) {
                 this.dataManager.createDocument(req.body, req.userid)
                     .then((document) => {
                         this.socketServer.sendEventToUser(req.socketID, req.userid, "newDocument", {newDocument: document});
-                        this.logger.info("New document created:", document);
+                        this.logger.info(`New document created: ${JSON.stringify(document)}`);
                         res.status(200).json(document);
                     })
                     .catch((error) => {
@@ -210,7 +244,7 @@ export default class NetworkManager{
             }
         });
 
-        this.expressApp.patch("/docs/update/:documentID", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.patch("/docs/update/:documentID", this.authenticateJWT, (req, res) => {
             if (this.validator.validate("documentUpdate", req.body)) {
                 this.dataManager.updateDocument(req.params.documentID, req.body, req.userid)
                     .then((numUpdated) => {
@@ -233,7 +267,7 @@ export default class NetworkManager{
             }
         });
 
-        this.expressApp.delete("/docs/remove/:documentID", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.delete("/docs/remove/:documentID", this.authenticateJWT, (req, res) => {
             this.dataManager.removeDocument(req.params.documentID, req.userid)
                 .then((numRemoved) => {
                     if (numRemoved > 0) {
@@ -254,7 +288,7 @@ export default class NetworkManager{
         });
 
         // Structure endpoints with access control
-        this.expressApp.get("/structures/list", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.get("/structures/list", this.authenticateJWT, (req, res) => {
             this.dataManager.getStructures()
                 .then((structures) => {
                     res.status(200).json(structures);
@@ -264,11 +298,11 @@ export default class NetworkManager{
                 });
         });
 
-        this.expressApp.post("/structures/create", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.post("/structures/create", this.authenticateJWT, (req, res) => {
             if (this.validator.validate("structureCreation", req.body)) {
                 this.dataManager.createStructure(req.body, req.userid)
                     .then((structure) => {
-                        this.socketServer.sendEventToAdmins(req.socketID, "newStructure", {newStructure: structure});
+                        this.socketServer.sendEventToUser(req.socketID, req.userid, "newStructure", {newStructure: structure});
                         this.logger.info("New structure created:", structure);
                         res.status(200).json(structure);
                     })
@@ -284,14 +318,14 @@ export default class NetworkManager{
             }
         });
 
-        this.expressApp.patch("/structures/update/:structureID", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.patch("/structures/update/:structureID", this.authenticateJWT, (req, res) => {
             if (this.validator.validate("structureUpdate", req.body)) {
                 const structureID = parseInt(req.params.structureID);
                 this.dataManager.updateStructure(structureID, req.body, req.userid)
                     .then((numUpdated) => {
                         if (numUpdated > 0) {
                             res.status(200).json({message: "Structure updated successfully"});
-                            this.socketServer.sendEventToAdmins(req.socketID, "changedStructure", {changedStructure: req.body});
+                            this.socketServer.sendEventToUser(req.socketID, req.userid, "changedStructure", {changedStructure: req.body});
                             this.logger.info("Structure updated:", req.body);
                         } else {
                             res.status(404).json({error: "Structure not found"});
@@ -309,7 +343,7 @@ export default class NetworkManager{
             }
         });
 
-        this.expressApp.delete("/structures/remove/:structureID", this.authenticateJWT.bind(this), (req, res) => {
+        this.expressApp.delete("/structures/remove/:structureID", this.authenticateJWT, (req, res) => {
             const structureID = req.params.structureID;
             this.dataManager.removeStructure(structureID, req.userid)
                 .then((numRemoved) => {
@@ -329,24 +363,92 @@ export default class NetworkManager{
                     }
                 });
         });
-    }
 
-    private authenticateJWT(req: Request, res: Response, next: NextFunction) {
-        const authHeader = req.headers['authorization']
-        const token = authHeader && authHeader.split(' ')[1]
-        if (token == null) {
-            res.sendStatus(401);
-            return;
-        }
+        this.expressApp.post("/types/write", this.authenticateJWT, (req, res) => {
+            if (this.validator.validate("typeCreation", req.body)) {
+                this.dataManager.editDocumentType(req.body)
+                    .then((structure) => {
+                        this.socketServer.sendEventToAdmins(req.socketID, "newType", {newType: structure});
+                        this.logger.info("New document type created:", structure);
+                        res.status(200).json(structure);
+                    })
+                    .catch((error) => {
+                        if (error === "Only admins can create document types") {
+                            res.status(403).json({error: error});
+                        } else {
+                            res.status(500).json({error: error.message || error});
+                        }
+                    });
+            } else {
+                res.status(400).json({error: "Invalid document type data"});
+            }
+        });
 
-        jwt.verify(token, JWTOptions.secret, (err: any, payload: any) => {
-            if (err) return res.sendStatus(403);
-            req.userid = payload.id;
+        this.expressApp.get('/types/list', this.authenticateJWT, (req, res) => {
+            this.dataManager.getDocumentTypes()
+                .then((types: I_DocumentType[]) => {
+                    res.status(200).json(types);
+                }).catch((error) => {
+                res.status(500).json({error: error.message});
+            });
+        });
 
-            if (req.headers['X-Socket-ID'])
-                req.socketID = req.headers['X-Socket-ID'] as string;
-
-            next();
+        this.expressApp.delete("/types/remove/:documentTypeID", this.authenticateJWT, (req, res) => {
+            const documentTypeID = req.params.documentTypeID;
+            this.dataManager.removeDocumentType(documentTypeID, req.userid)
+                .then((numRemoved) => {
+                    if (numRemoved > 0) {
+                        res.status(200).json({message: "Document type removed successfully"});
+                        this.socketServer.sendEventToAdmins(req.socketID, "removedDataType", {removedID: documentTypeID})
+                        this.logger.info("Document type removed:", documentTypeID);
+                    } else {
+                        res.status(404).json({error: "Document type not found"});
+                    }
+                })
+                .catch((error) => {
+                    if (error === "Only admins can remove document types") {
+                        res.status(403).json({error: error});
+                    } else {
+                        res.status(500).json({error: error.message || error});
+                    }
+                });
         });
     }
+
+    private authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const authHeader = req.headers['authorization'];
+            if (!authHeader) {
+                res.status(401).json({error: "No authorization header"});
+                return
+            }
+
+            const token = authHeader && authHeader.split(' ')[1];
+            if (token == null) {
+                res.status(401).json({error: "No token provided"});
+                return
+            }
+
+            jwt.verify(token, JWTOptions.secret, (err: any, payload: any) => {
+                if (err) return res.sendStatus(403);
+                this.dataManager.getUserByID(payload.id).then((user) => {
+                    if (!user) {
+                        res.status(403).json({error: "User not found"});
+                        return
+                    }
+                    req.userid = payload.id;
+                    if (req.headers['x-socket-id'])
+                        req.socketID = req.headers['x-socket-id'] as string;
+                    next();
+                }).catch((error) => {
+                    res.status(500).json({error: error.message});
+                    return
+                })
+            });
+        } catch (error) {
+            res.status(500).json({error: "Authentication error"});
+            return
+        }
+    };
+
 }

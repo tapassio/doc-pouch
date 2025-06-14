@@ -283,7 +283,6 @@ const hasActiveFilters = computed(() => {
     </div>
 
     <div class="d-flex justify-end mt-3">
-      <v-btn color="primary" class="mr-2" prepend-icon="mdi-plus" @click="addNewDocument">New</v-btn>
       <v-btn color="error" prepend-icon="mdi-delete" @click="confirmDelete" :disabled="!selectedDocumentID">Remove</v-btn>
     </div>
   </div>

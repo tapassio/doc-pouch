@@ -250,7 +250,6 @@ function updateIsAdmin(value: boolean | null) {
 // Password change functions
 function submitPasswordChange() {
   if (newPassword.value === confirmPassword.value && props.user?._id !== undefined) {
-    console.log('Emitting user-updated for password:', props.user._id, 'password', newPassword.value);
     emit('user-updated', props.user._id, 'password', newPassword.value);
     closePasswordDialog();
   }

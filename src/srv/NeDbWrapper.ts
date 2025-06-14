@@ -7,7 +7,7 @@ import type {
     I_DocumentEntry,
     I_StructureEntry,
     I_UserCreation,
-    I_DocumentCreation, I_StructureCreation, I_DocumentCreationOwned, I_DocumentQuery
+    I_DocumentCreation, I_StructureCreation, I_DocumentCreationOwned, I_DocumentQuery, I_DocumentType
 } from "../types.ts";
 
 
@@ -15,6 +15,7 @@ export default class NeDbWrapper {
     users: CustomStore
     structures: CustomStore
     documents: CustomStore
+    types: CustomStore
     logger: winston.Logger
     saltRounds: number = 10;
 
@@ -34,6 +35,9 @@ export default class NeDbWrapper {
         this.documents = new CustomStore("./db/docpouch-documents.db",
             "User Documents", "Collection of user documents")
         this.documents.datastore.persistence.setAutocompactionInterval(1000 * 60 * 60);
+        this.types = new CustomStore("./db/docpouch-types.db",
+            "Document Types", "Collection of document types")
+        this.types.datastore.persistence.setAutocompactionInterval(1000 * 60 * 60);
 
         this.users.count({}).then((counter) => {
             // No users in database yet?
@@ -195,11 +199,19 @@ export default class NeDbWrapper {
                         } else {
                             reject("Invalid password");
                         }
-                    })
+                    }).catch((error) => {
+                        reject("Error comparing password: " + error);
+                    });
+                } else {
+                    // This was missing - handle case where user is not found
+                    reject("User not found");
                 }
-            })
-        })
+            }).catch((error) => {
+                reject("Database error: " + error);
+            });
+        });
     }
+
 
     removeUser(userID: string) {
         return new Promise((resolve, reject) => {
@@ -228,21 +240,23 @@ export default class NeDbWrapper {
                             this.users.count({name: newUserName}).then((count) => {
                                 if (count > 0) {
                                     reject(new Error("User with this name already exists"));
-                                } else {
-                                    if ("_id" in user && user._id) {
-                                        this.users.update(user._id, updateData).then((result) => {
-                                            resolve(result);
-                                        }).catch(reject);
-                                    }
                                 }
                             }).catch(reject);
-                        } else {
-                            // No name change, proceed with update
-                            if ("_id" in user && user._id) {
-                                this.users.update(user._id, updateData).then((result) => {
+                        }
+
+                        if ("password" in updateData && updateData.password) {
+                            bcrypt.hash(updateData.password, this.saltRounds).then((hash: string) => {
+                                updateData.password = hash;
+                                this.users.update(userID, updateData).then((result) => {
                                     resolve(result);
-                                }).catch(reject);
-                            }
+                                })
+                            })
+                        }
+
+                        if ("_id" in user && user._id) {
+                            this.users.update(user._id, updateData).then((result) => {
+                                resolve(result);
+                            }).catch(reject);
                         }
 
                     } else {
@@ -375,7 +389,8 @@ export default class NeDbWrapper {
     }
 
     // Document methods with access control
-    getDocuments(requestingUserID: string): Promise<I_DocumentEntry[]> {
+
+    getAllDocuments(requestingUserID: string): Promise<I_DocumentEntry[]> {
         return new Promise((resolve, reject) => {
             this.isAdmin(requestingUserID).then((isAdmin) => {
                 if (isAdmin) {
@@ -480,6 +495,58 @@ export default class NeDbWrapper {
             });
         });
     }
+
+    getDocumentTypes(): Promise<I_DocumentType[]> {
+        return new Promise((resolve, reject) => {
+            this.types.query({}).then((result) => {
+                resolve(result as I_DocumentType[]);
+            }).catch(reject);
+        });
+    }
+
+    editDocumentType(newTypeData: I_DocumentType): Promise<I_DocumentType> {
+        return new Promise((resolve, reject) => {
+            // Check for duplicate type and subtype combination before creating or updating
+            this.types.query({type: newTypeData.type, subType: newTypeData.subType}).then(docs => {
+                if (docs.length > 0 && (!newTypeData._id || docs[0]._id !== newTypeData._id)) {
+                    // Reject operation if duplicate found and it's different document
+                    const error = new Error("A document with the same type and subtype already exists.");
+                    reject(error);
+                } else if (newTypeData._id === undefined) {
+                    // new entry
+                    this.types.add(newTypeData).then((newDocument) => {
+                        this.logger.info("Created new document type: " + JSON.stringify(newDocument));
+                        resolve(newDocument as I_DocumentType);
+                    }).catch(reject);
+                } else {
+                    // No duplicate found or it's the same document, proceed to update
+                    this.types.update(newTypeData._id, newTypeData).then((numUpdated) => {
+                        this.logger.info("Updated document type: " + newTypeData._id);
+                        resolve(newTypeData);
+                    }).catch(reject);
+                }
+            })
+        });
+    }
+
+    removeDocumentType(documentTypeID: string, requestingUserID: string): Promise<number> {
+        return new Promise((resolve, reject) => {
+            this.isAdmin(requestingUserID).then((isAdmin) => {
+                if (isAdmin) {
+                    this.types.remove({_id: documentTypeID}).then((numRemoved) => {
+                        if (numRemoved > 0) {
+                            this.logger.info("Removed document type: " + JSON.stringify(documentTypeID));
+                            resolve(numRemoved);
+                        } else {
+                            reject("Document type not found");
+                        }
+                    });
+                } else {
+                    reject("Not authorized to remove this document type");
+                }
+            });
+        });
+    }
 }
 
 class CustomStore {
@@ -505,7 +572,7 @@ class CustomStore {
         });
     }
 
-    async add(inputData: I_DocumentCreationOwned | I_UserCreation | I_StructureCreation): Promise<I_DocumentEntry | I_UserEntry | I_StructureEntry> {
+    async add(inputData: I_DocumentCreationOwned | I_UserCreation | I_StructureCreation | I_DocumentType): Promise<I_DocumentEntry | I_UserEntry | I_StructureEntry | I_DocumentType> {
         return new Promise((resolve, reject) => {
             this.datastore.insert(inputData, (err: Error | null, newDocument: any) => {
                 if (err) {
@@ -517,7 +584,7 @@ class CustomStore {
         });
     }
 
-    async query(query: object): Promise<I_DocumentEntry[] | I_UserEntry[] | I_StructureEntry[]> {
+    async query(query: object): Promise<I_DocumentEntry[] | I_UserEntry[] | I_StructureEntry[] | I_DocumentType[]> {
         return new Promise((resolve, reject) => {
             this.datastore.find(query, (err: any, newDocument: I_DocumentEntry[] | I_UserEntry[]) => {
                 if (err) {

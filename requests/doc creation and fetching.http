@@ -15,10 +15,17 @@ Content-Type: application/json
 
 {
   "type": 1,
-  "subtype": 1,
+  "subType": 1,
   "title": "Test document",
   "content": {
     "customerID": 44,
     "customerRanking": 3
   }
 }
+> {%
+    client.global.set("newDocID", response.body._id);
+%}
+
+### Remove document
+DELETE {{base-url}}/docs/remove/{{newDocID}}
+Authorization: Bearer {{auth_token}}

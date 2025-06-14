@@ -27,19 +27,38 @@ export default class IoSocketServer {
         this.ioSocket.on('connection', (socket) => {
             let client = this.getClientBySocketID(socket.id);
             if (!client) {
-                this.networkManager.logger.error("Unknown client connected: ", socket.id);
-            }
-            else {
-                this.networkManager.logger.info("Client connected: ", socket.id);
+                this.networkManager.logger.error(`Unknown client connected: ${socket.id}`);
+                socket.disconnect(true);
+                return;
+            } else if (client.userid) {
+                this.networkManager.dataManager.getUserByID(client.userid)
+                    .then((userInfo) => {
+                        this.networkManager.logger.info(`Client connected: ${userInfo.name} (${userInfo.email}) - ${socket.id}`);
 
-                socket.on('disconnect', () => {
-                    this.networkManager.logger.info("Client disconnected: ", socket.id);
-                    this.wsClientList = this.wsClientList.filter(client => client.socket.id !== socket.id);
-                });
+                        socket.on('disconnect', () => {
+                            this.networkManager.logger.info(`Client disconnected: ${userInfo.name} (${userInfo.email}) - ${socket.id}`);
+                            this.wsClientList = this.wsClientList.filter(c => c.socket.id !== socket.id);
+                        });
 
-                socket.on("heartbeatPong", () => {
-                    client.lastPongReceived = Date.now();
-                });
+                        socket.on("heartbeatPong", () => {
+                            client.lastPongReceived = Date.now();
+                        });
+                    })
+                    .catch((error) => {
+                        this.networkManager.logger.error(`Failed to get user info for ID ${client.userid}: ${error.message}`);
+                        socket.on('disconnect', () => {
+                            this.networkManager.logger.info(`Client disconnected: ${client.userid} - ${socket.id}`);
+                            this.wsClientList = this.wsClientList.filter(c => c.socket.id !== socket.id);
+                        });
+
+                        socket.on("heartbeatPong", () => {
+                            client.lastPongReceived = Date.now();
+                        });
+                    });
+            } else {
+                // Handle case where client exists but doesn't have a user ID
+                this.networkManager.logger.warn(`Client connected without user ID: ${socket.id}`);
+                socket.disconnect(true);
             }
         });
 
@@ -73,11 +92,25 @@ export default class IoSocketServer {
     }
 
     sendEventToUser(sourceID: string | undefined, userID: string, event: string, data?: I_WsMessage) {
-        const clients = this.getClientsByUserID(userID);
-        if (clients) {
+        this.networkManager.logger.debug(`Attempting to send event '${event}' to userID: ${userID}, sourceID: ${sourceID || 'undefined'}`);
+
+        // Debug: Log all clients in the list
+        this.networkManager.logger.debug(`Current wsClientList has ${this.wsClientList.length} clients`);
+        if (this.wsClientList.length > 0) {
+            const clientIDs = this.wsClientList.map(c => `${c.userid}:${c.socket.id}`);
+            this.networkManager.logger.debug(`Available clients: ${clientIDs.join(', ')}`);
+        }
+
+        const clients = this.wsClientList.filter(client => client.userid === userID);
+
+        if (clients && clients.length > 0) {
+            this.networkManager.logger.debug(`Found ${clients.length} clients for userID: ${userID}`);
             for (let client of clients) {
                 this.sendEventToClient(sourceID, client, event, data);
+                this.sendEventToAdmins(sourceID, event, data);
             }
+        } else {
+            this.networkManager.logger.warn(`No clients found for userID: ${userID} when trying to send event: ${event}`);
         }
     }
 
@@ -104,34 +137,66 @@ export default class IoSocketServer {
     }
 
     private getClientsByUserID(userID: string): I_Client[] | undefined {
-        return this.wsClientList.filter(client => client.userid === userID);
+        const clients = this.wsClientList.filter(client => client.userid === userID);
+        this.networkManager.logger.debug(`getClientsByUserID: Found ${clients.length} clients for userID: ${userID}`);
+        return clients.length > 0 ? clients : undefined;
     }
 
+
     private authMiddleware(socket: Socket, next: Function) {
+        this.networkManager.logger.debug(`Auth middleware running for socket ${socket.id}`);
+
         const token = socket.handshake.auth.token;
+        if (!token) {
+            this.networkManager.logger.warn(`Socket ${socket.id} has no auth token`);
+            return next(new Error('Authentication error: No token provided'));
+        }
 
-        if (token) {
+        try {
+            this.networkManager.logger.debug(`Verifying JWT token for socket ${socket.id}`);
+
             jwt.verify(token, this.JWTOptions.secret, (err: any, payload: any) => {
-                if (err)
-                    return next(new Error('Authentication error'));
+                if (err) {
+                    this.networkManager.logger.error(`JWT verification failed for socket ${socket.id}: ${err.message}`);
+                    return next(new Error('Authentication error: Invalid token'));
+                }
 
-                let client = this.getClientBySocketID(socket.id);
-                if (!client) {
-                    // unknown client
-                    client = {
-                        socket: socket,
-                        userid: payload.id,
-                        isAdmin: payload.isAdmin || false,
-                        lastPingSent: Date.now(),
-                        lastPongReceived: Date.now()
-                    };
+                if (!payload || !payload.id) {
+                    this.networkManager.logger.error(`Invalid payload in JWT token for socket ${socket.id}`);
+                    return next(new Error('Authentication error: Invalid payload'));
+                }
+
+                this.networkManager.logger.debug(`JWT verified successfully for user ${payload.id}, socket ${socket.id}`);
+
+                const client = {
+                    socket: socket,
+                    userid: payload.id,
+                    isAdmin: payload.isAdmin || false,
+                    lastPingSent: Date.now(),
+                    lastPongReceived: Date.now()
+                };
+
+                // Check if this client already exists in the list (by socket ID)
+                const existingClientIndex = this.wsClientList.findIndex(c => c.socket.id === socket.id);
+                if (existingClientIndex >= 0) {
+                    this.networkManager.logger.debug(`Replacing existing client in wsClientList at index ${existingClientIndex}`);
+                    this.wsClientList[existingClientIndex] = client;
+                } else {
+                    this.networkManager.logger.debug(`Adding new client to wsClientList: userID=${payload.id}, socketID=${socket.id}`);
                     this.wsClientList.push(client);
                 }
+
+                // Debug: Log all clients in the list
+                this.networkManager.logger.debug(`Current wsClientList has ${this.wsClientList.length} clients`);
+                this.wsClientList.forEach((c, idx) => {
+                    this.networkManager.logger.debug(`Client ${idx}: userID=${c.userid}, socketID=${c.socket.id}`);
+                });
+
                 next();
             });
-        }
-        else {
-            return next(new Error('Authentication error'));
+        } catch (error) {
+            this.networkManager.logger.error(`Exception in auth middleware for socket ${socket.id}: ${error}`);
+            return next(new Error('Authentication error: Server error'));
         }
     }
 }

@@ -13,6 +13,8 @@ tags:
     description: Document management endpoints
   - name: data structures
     description: Data structure management endpoints
+  - name: document types
+    description: Document type management endpoints
 paths:
   /users/login:
     post:
@@ -51,7 +53,8 @@ paths:
       tags:
         - administration
       security:
-        - bearerAuth: []
+        - userAuth: [ ]
+        - adminAuth: [ ]
       responses:
         200:
           description: List of all users
@@ -71,7 +74,8 @@ paths:
       tags:
         - administration
       security:
-        - bearerAuth: []
+        - userAuth: [ ]
+        - adminAuth: [ ]
       parameters:
         - in: path
           description: "Unique user ID"
@@ -100,7 +104,7 @@ paths:
       tags:
         - administration
       security:
-        - bearerAuth: []
+        - adminAuth: [ ]
       requestBody:
         description: "JSON body with all information to create a new user"
         required: true
@@ -124,7 +128,7 @@ paths:
       tags:
         - administration
       security:
-        - bearerAuth: []
+        - adminAuth: [ ]
       parameters:
         - in: path
           description: "Unique user ID"
@@ -146,7 +150,8 @@ paths:
       tags:
         - documents
       security:
-        - bearerAuth: []
+        - userAuth: [ ]
+        - adminAuth: [ ]
       requestBody:
         description: "JSON body with all the information to create a new document"
         required: true
@@ -171,7 +176,8 @@ paths:
       tags:
         - documents
       security:
-        - bearerAuth: []
+        - userAuth: [ ]
+        - adminAuth: [ ]
       responses:
         200:
           description: "Array of documents with the content attribute omitted"
@@ -191,7 +197,8 @@ paths:
       tags:
         - documents
       security:
-        - bearerAuth: [ ]
+        - userAuth: [ ]
+        - adminAuth: [ ]
       requestBody:
         required: true
         description: "An object describing the query to fetch the documents."
@@ -219,7 +226,8 @@ paths:
       tags:
         - documents
       security:
-        - bearerAuth: []
+        - userAuth: [ ]
+        - adminAuth: [ ]
       parameters:
         - in: path
           description: "Unique document ID"
@@ -248,7 +256,8 @@ paths:
       tags:
         - documents
       security:
-        - bearerAuth: []
+        - userAuth: [ ]
+        - adminAuth: [ ]
       parameters:
         - in: path
           description: "Unique document ID"
@@ -270,7 +279,7 @@ paths:
       tags:
         - data structures
       security:
-        - bearerAuth: []
+        - adminAuth: [ ]
       requestBody:
         description: "JSON body with all the information to create a new data structure"
         required: true
@@ -295,7 +304,8 @@ paths:
       tags:
         - data structures
       security:
-        - bearerAuth: []
+        - userAuth: [ ]
+        - adminAuth: [ ]
       responses:
         200:
           description: "Array of data structures"
@@ -314,14 +324,14 @@ paths:
       tags:
         - data structures
       security:
-        - bearerAuth: []
+        - adminAuth: [ ]
       parameters:
         - in: path
           description: "Unique structure ID"
           name: structureID
           required: true
           schema:
-            type: integer
+            type: string
       requestBody:
         description: "Data object containing only the attributes to be updated"
         required: true
@@ -343,14 +353,14 @@ paths:
       tags:
         - data structures
       security:
-        - bearerAuth: []
+        - adminAuth: [ ]
       parameters:
         - in: path
           description: "Unique structure ID"
           name: structureID
           required: true
           schema:
-            type: integer
+            type: string
       responses:
         200:
           description: "Structure successfully deleted"
@@ -358,6 +368,72 @@ paths:
           description: "Not authorized to delete this structure"
         404:
           description: "Structure not found"
+
+  /types/list:
+    get:
+      summary: List all document types
+      description: Get all document types
+      tags:
+        - document types
+      security:
+        - userAuth: [ ]
+        - adminAuth: [ ]
+      responses:
+        200:
+          description: List of all document types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DocumentTypeEdit"
+        401:
+          description: "Not authorized"
+
+  /types/write:
+    post:
+      summary: Add or overwrite a document type
+      tags:
+        - document types
+        - administration
+      security:
+        - adminAuth: [ ]
+      requestBody:
+        description: "Data object containing the new data type. If it contains an _id, the entry will be overwritten. Otherwise, a new document type will be created, provided the type/subtype combination does not exist yet."
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentTypeEdit"
+      responses:
+        200:
+          description: "Document type successfully written"
+        401:
+          description: "Not authorized to write document types"
+
+  /types/remove/{documentTypeID}:
+    delete:
+      summary: Remove a document type
+      description: Caution, removing a document type could result in existing documents referring to a non-existant document type"
+      tags:
+        - data types
+        - administration
+      security:
+        - adminAuth: [ ]
+      parameters:
+        - in: path
+          description: "Unique document type ID"
+          name: documentTypeID
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: "Document type successfully deleted"
+        401:
+          description: "Not authorized to delete document types"
+        404:
+          description: "Document type not found"
 
 components:
   schemas:
@@ -612,9 +688,48 @@ components:
       required:
         - name
         - type
+
+    DocumentTypeEdit:
+      type: object
+      description: "Structure describing a document type"
+      properties:
+        _id:
+          type: string
+          description: "Document type ID"
+          example: "yejS2mp4HmHQ8pDl"
+        name:
+          type: string
+          description: "Document type name"
+          example: "HR Wages"
+        description:
+          type: string
+          description: "Document type description"
+          example: "HR Wage information Document listing wages per personnel ID"
+        type:
+          type: number
+          description: "The index for this document type"
+          example: 14
+        subType:
+          type: number
+          description: "The index for this document subtype"
+          example: 2
+        defaultStructureID:
+          type: string
+          description: "ID of the document structure this data type is supposed to use"
+          example: "6O7LeciisTY20PCQ"
+      required:
+        - name
+        - type
+        - subType
+
+
   
   securitySchemes:
-    bearerAuth:
+    userAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    adminAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT

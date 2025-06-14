@@ -7,6 +7,7 @@ export default class SchemaValidator {
     userUpdateSchema: ObjectSchema<object>;
     documentCreationSchema: ObjectSchema<object>;
     documentUpdateSchema: ObjectSchema<object>;
+    typeCreationSchema: ObjectSchema<object>;
     structureCreationSchema: ObjectSchema<object>;
     structureUpdateSchema: ObjectSchema<object>;
     documentFetchSchema: ObjectSchema<object>;
@@ -43,7 +44,7 @@ export default class SchemaValidator {
             subType: number().required(),
             title: string().required(),
             description: string().optional(),
-            content: string().required(),
+            content: object().required(),
         });
 
         this.documentUpdateSchema = object({
@@ -51,7 +52,7 @@ export default class SchemaValidator {
             subType: number().optional(),
             title: string().optional(),
             description: string().optional(),
-            content: string().optional(),
+            content: object().optional(),
         });
 
         this.structureCreationSchema = object({
@@ -73,6 +74,15 @@ export default class SchemaValidator {
             type: number().optional(),
             subType: number().optional(),
         })
+
+        this.typeCreationSchema = object({
+            _id: string().optional(),
+            name: string().required(),
+            description: string().optional(),
+            type: number().optional(),
+            subType: number().optional(),
+            defaultStructureID: string().optional(),
+        });
 
         this.logger.debug('SchemaValidator initialized with schemas');
     }
@@ -104,6 +114,9 @@ validate(template: string, userInput: object): boolean {
                 break;
             case "structureUpdate":
                 res = this.structureUpdateSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                break;
+            case "typeCreation":
+                res = this.typeCreationSchema.validateSync(userInput, {abortEarly: false, stripUnknown: true});
                 break;
             default:
                 const errorMsg = `Unknown schema template: ${template}`;
