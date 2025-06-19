@@ -15,7 +15,7 @@
     "@mdi/font": "^7.4.47",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
-    "docpouch-client": "^0.8.4",
+    "docpouch-client": "../docpouch-client",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "nedb": "^1.8.0",

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {ref} from 'vue';
 import type {I_DocumentType, I_StructureEntry} from "../../../types.ts";
-import DocumentTypeCreationDialog from './DocumentTypeCreationDialog.vue';
+import TypeCreationDialog from './TypeCreationDialog.vue';
 import type DbPouchClient from 'docpouch-client';
 
 const props = defineProps<{
@@ -12,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'typeSelected': [typeID: string];
+  'typeSelectedID': [type: string];
   'typeListChanged': [];
 }>();
 
@@ -53,7 +53,7 @@ const handleTypeDeleted = async () => {
 };
 
 const selectType = (id: string) => {
-  emit('typeSelected', id);
+  emit('typeSelectedID', id);
   selectedTypeID.value = id;
 };
 
@@ -128,7 +128,7 @@ function handleTypeCreated(newType: I_DocumentType) {
       </div>
 
       <!-- Creation Dialog -->
-      <DocumentTypeCreationDialog
+      <TypeCreationDialog
           v-if="showCreationDialog"
           :show="showCreationDialog"
           :type-list="props.typeList"

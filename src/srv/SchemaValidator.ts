@@ -1,5 +1,6 @@
 import {boolean, number, object, ObjectSchema, string, array} from 'yup';
 import winston from 'winston';
+import {ar} from "vuetify/locale";
 
 export default class SchemaValidator {
     userCreationSchema: ObjectSchema<object>;
@@ -44,15 +45,17 @@ export default class SchemaValidator {
             subType: number().required(),
             title: string().required(),
             description: string().optional(),
-            content: object().required(),
+            content: array().required(),
         });
 
         this.documentUpdateSchema = object({
+            _id: string().required(),
+            owner: string().optional(),
             type: number().optional(),
             subType: number().optional(),
             title: string().optional(),
             description: string().optional(),
-            content: object().optional(),
+            content: array().optional(),
         });
 
         this.structureCreationSchema = object({

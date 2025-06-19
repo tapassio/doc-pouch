@@ -19,12 +19,14 @@ import docPouchLogo from './assets/docPouch.png';
 import AboutDialog from "./components/AboutDialog.vue";
 import type {I_EventString} from "docpouch-client/dist/types";
 import TypePad from "./components/TypePad.vue";
+import TypeDisplay from "./components/TypeDisplay.vue";
 
 const serverPort = 3030;
 enum DisplayComponent {
   documentViewer,
   userViewer,
-  structureViewer
+  structureViewer,
+  typeViewer
 }
 
 const authToken = ref<string | null>(null);
@@ -42,6 +44,8 @@ const realtimeUpdates = ref(false);
 let loadedDocument = ref<I_DocumentEntry | undefined>(undefined);
 let loadedUser = ref<I_UserEntry | undefined>(undefined);
 let loadedStructure = ref<I_DataStructure | undefined>(undefined);
+const snackBarMessage = ref('');
+const snackBarVisible = ref(false);
 let isAdmin = computed(() => {
   if (authToken.value === null) {
     return false;
@@ -81,6 +85,12 @@ watch(realtimeUpdates, (newVal, oldVal) => {
   }
 })
 
+const selectedTypeID = ref<string | null>(null); // This should be set to the currently selected type
+
+function handleTypeSelect(newTypeID: string) {
+  selectedTypeID.value = newTypeID;
+  shownComponent.value = DisplayComponent.typeViewer;
+}
 
 function handleNetworkEvent(event: I_EventString, data: any) {
   switch (event) {
@@ -127,6 +137,18 @@ async function handleStructureSelected(structureID: string) {
 
   loadedStructure.value = structureArray.value.find(structure => structure._id?.toString() === structureID);
   console.log("Loaded structure:", loadedStructure.value);
+}
+
+async function handleDocumentUpdate(document: I_DocumentEntry) {
+  apiClient.updateDocument(document._id, document).then(() => {
+    successfullySaved();
+    fetchData().then(() => {
+      handleDocumentSelected(document._id);
+    });
+  }).catch(error => {
+    console.error("Error updating document:", error);
+    handleApiError(error, "updating document");
+  });
 }
 
 async function handleDocumentRemoved(documentID: string) {
@@ -254,8 +276,8 @@ function handleUserUpdate(userID: string, field: string, value: any) {
   }
 
   apiClient.updateUser(userID, {[field]: value})
-      .then((response) => {
-        console.log("User updated successfully, response:", response);
+      .then(() => {
+        successfullySaved()
         fetchData().then(() => {
           handleUserSelected(userID);
         });
@@ -291,7 +313,6 @@ function handleUserRemoved(userID: string) {
 
 function handleLogout() {
   setToken(null);
-  isAdmin.value = false;
   localStorage.removeItem('isAdmin');
   userArray.value = [];
   docArray.value = [];
@@ -319,6 +340,21 @@ function handleApiError(error: unknown, context: string = "API operation") {
       }
     }
   }
+}
+
+function handleTypeEdit(newType: I_DocumentType) {
+  apiClient.updateType(newType).then(() => {
+    successfullySaved();
+    fetchData();
+  }).catch(error => {
+    console.error("Error updating document type:", error);
+    handleApiError(error, "document type update");
+  });
+}
+
+function successfullySaved() {
+  snackBarMessage.value = 'Save successful!';
+  snackBarVisible.value = true;
 }
 </script>
 
@@ -394,7 +430,9 @@ function handleApiError(error: unknown, context: string = "API operation") {
                            :structure-list="structureArray"
                            :api-client="apiClient"
                            :is-admin="isAdmin"
-                           @type-list-changed="fetchData"/>
+                           @type-list-changed="fetchData"
+                           @type-selected-i-d="handleTypeSelect"
+                  />
                 </v-expansion-panel-text>
               </v-expansion-panel>
 
@@ -439,6 +477,7 @@ function handleApiError(error: unknown, context: string = "API operation") {
                 id="2"
                 :object="loadedDocument"
                 v-show="shownComponent === DisplayComponent.documentViewer"
+                @update:object="handleDocumentUpdate"
             />
             <UserDisplay
                 :user="loadedUser"
@@ -453,9 +492,17 @@ function handleApiError(error: unknown, context: string = "API operation") {
                 :is-admin="isAdmin"
                 v-if="shownComponent === DisplayComponent.structureViewer"
             />
+            <TypeDisplay :displayed-type-i-d="selectedTypeID"
+                         :type-list="typeArray"
+                         :structure-list="structureArray"
+                         @update:type="handleTypeEdit"
+                         v-if="shownComponent === DisplayComponent.typeViewer"/>
           </v-col>
         </v-row>
       </v-container>
+      <v-snackbar v-model="snackBarVisible" :timeout="3000" top right>
+        {{ snackBarMessage }}
+      </v-snackbar>
       <v-footer app class="bg-grey-lighten-3 px-4">
         <div class="text-center w-100">
           <div class="text-caption text-grey">

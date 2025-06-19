@@ -610,6 +610,9 @@ class CustomStore {
 
     async update(documentID: string, updateInfo: object): Promise<number> {
         return new Promise((resolve, reject) => {
+            if ("owner" in updateInfo)
+                delete updateInfo["owner"];
+
             if (!("owner" in updateInfo)) {
                 this.datastore.update({_id: documentID}, {$set: updateInfo}, {}, (err: any, numReplaced: number) => {
                     if (err) {

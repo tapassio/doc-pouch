@@ -62,7 +62,7 @@
 
           <!-- Group field -->
           <v-col cols="12">
-            <v-combobox label="Department"
+            <v-combobox label="Group"
                         :items="props.groupList"
                         variant="outlined"
                         density="compact"

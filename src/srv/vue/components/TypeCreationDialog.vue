@@ -140,11 +140,10 @@ let selectedType = ref<number | null>(null);
 
 function handleTypeCreation() {
   if (newTypeRadio.value) {
-    // add subtype to new type
     if (props.typeList.length === 0)
       newType.value.type = 0;
     else
-      newType.value.type = Math.max(...props.typeList.map(type => type.type));
+      newType.value.type = 1 + Math.max(...props.typeList.map(type => type.type));
     newType.value.subType = 0;
   } else if (selectedType.value !== null) {
     // add subtype to existing type

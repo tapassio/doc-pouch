@@ -364,7 +364,8 @@ export default class NetworkManager {
                 });
         });
 
-        this.expressApp.post("/types/write", this.authenticateJWT, (req, res) => {
+        this.expressApp.patch("/types/write", this.authenticateJWT, (req, res) => {
+            console.log("Writing document type: ", req.body);
             if (this.validator.validate("typeCreation", req.body)) {
                 this.dataManager.editDocumentType(req.body)
                     .then((structure) => {
