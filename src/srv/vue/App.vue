@@ -11,6 +11,7 @@ import type {
   I_LoginResponse,
   I_DocumentType
 } from "../../types.ts";
+import ImportDatabaseDialog from "./components/ImportDatabaseDialog.vue";
 import UserDisplay from "./components/UserDisplay.vue";
 import StructurePad from "./components/StructurePad.vue";
 import DocumentPad from "./components/DocumentPad.vue";
@@ -40,6 +41,7 @@ const apiClient = new DbPouchClient(window.location.href.slice(0, window.locatio
 const isLoggedIn = computed(() => authToken.value !== null);
 const showLoginDialog = ref(true)
 const showAboutDialog = ref(false)
+const showImportDialog = ref(false)
 const realtimeUpdates = ref(false);
 let loadedDocument = ref<I_DocumentEntry | undefined>(undefined);
 let loadedUser = ref<I_UserEntry | undefined>(undefined);
@@ -356,6 +358,73 @@ function successfullySaved() {
   snackBarMessage.value = 'Save successful!';
   snackBarVisible.value = true;
 }
+
+async function handleExportDatabase() {
+  try {
+    // Get the base URL from the API client
+    const baseUrl = window.location.href.slice(0, Math.min(
+        window.location.href.lastIndexOf('/'),
+        window.location.href.indexOf(':', window.location.href.indexOf('://') + 3) !== -1
+            ? window.location.href.indexOf(':', window.location.href.indexOf('://') + 3)
+            : window.location.href.length
+    ));
+
+    // Create a URL for the export endpoint
+    const exportUrl = `${baseUrl}:${serverPort}/database/export`;
+
+    // Get the authorization token
+    const token = authToken.value;
+
+    if (!token) {
+      snackBarMessage.value = 'You must be logged in to export the database.';
+      snackBarVisible.value = true;
+      return;
+    }
+
+    // Create a link element to trigger the download
+    const link = document.createElement('a');
+    link.href = exportUrl;
+    link.download = 'docpouch-database.zip';
+
+    // Add the authorization header
+    const headers = new Headers();
+    headers.append('Authorization', `Bearer ${token}`);
+
+    // Fetch the file
+    const response = await fetch(exportUrl, {
+      method: 'GET',
+      headers: headers
+    });
+
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+
+    // Get the blob from the response
+    const blob = await response.blob();
+
+    // Create a URL for the blob
+    const url = window.URL.createObjectURL(blob);
+
+    // Set the link's href to the blob URL
+    link.href = url;
+
+    // Trigger the download
+    document.body.appendChild(link);
+    link.click();
+
+    // Clean up
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    snackBarMessage.value = 'Database export successful!';
+    snackBarVisible.value = true;
+  } catch (error) {
+    console.error('Error exporting database:', error);
+    snackBarMessage.value = `Error exporting database: ${error.message}`;
+    snackBarVisible.value = true;
+  }
+}
 </script>
 
 <template>
@@ -387,6 +456,14 @@ function successfullySaved() {
           </v-switch>
         </div>
 
+        <v-btn v-if="isLoggedIn" class="mr-2" color="white" variant="text" @click="handleExportDatabase">
+          <v-icon start>mdi-database-export</v-icon>
+          Export Database
+        </v-btn>
+        <v-btn v-if="isLoggedIn" class="mr-2" color="white" variant="text" @click="showImportDialog = true">
+          <v-icon start>mdi-database-import</v-icon>
+          Import Database
+        </v-btn>
         <v-btn v-if="isLoggedIn" @click="handleLogout" variant="text" color="white">
           <v-icon start>mdi-logout</v-icon>
           Logout
@@ -422,7 +499,7 @@ function successfullySaved() {
 
               <v-expansion-panel value="types">
                 <v-expansion-panel-title>
-                  <v-icon start>mdi-account-group</v-icon>
+                  <v-icon start>mdi-format-list-bulleted-type</v-icon>
                   Document Types
                 </v-expansion-panel-title>
                 <v-expansion-panel-text>
@@ -523,6 +600,7 @@ function successfullySaved() {
                    :api-client="apiClient" @login-success="handleLoginSuccess"
                    @update:show="handleDialogUpdate"/>
       <AboutDialog :show="showAboutDialog" @close="showAboutDialog = false"/>
+      <ImportDatabaseDialog :show="showImportDialog" @close="showImportDialog = false" @logout="handleLogout"/>
     </v-main>
   </v-app>
 </template>

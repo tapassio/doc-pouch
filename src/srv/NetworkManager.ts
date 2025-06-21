@@ -11,6 +11,10 @@ import SchemaValidator from "./SchemaValidator.js";
 import IoSocketServer from "./IoSocketServer.js";
 import * as http from "node:http";
 import * as os from "node:os";
+import fs from "fs";
+import multer from "multer";
+import archiver from "archiver";
+import AdmZip from "adm-zip";
 
 const JWTOptions = {
     secret: "ThisIsMyVeryOwnAndCreativeSecret",
@@ -65,6 +69,12 @@ export default class NetworkManager {
         this.expressApp.use(express.json());
         this.expressApp.use(cors(this.corsOptions));
         this.expressApp.disable('etag'); // Disable ETag header to prevent caching of responses
+
+        // Configure multer for file uploads
+        const upload = multer({
+            dest: 'uploads/',
+            limits: {fileSize: 50 * 1024 * 1024} // 50MB limit
+        });
 
         this.expressApp.get('/users/list', this.authenticateJWT, (req, res) => {
             this.dataManager.getUsers(req.userid)
@@ -240,7 +250,9 @@ export default class NetworkManager {
                         res.status(500).json({error: error.message || error});
                     });
             } else {
-                res.status(400).json({error: "Invalid document data"});
+                res.status(400).json({
+                    error: "Invalid document data",
+                });
             }
         });
 
@@ -413,6 +425,163 @@ export default class NetworkManager {
                         res.status(500).json({error: error.message || error});
                     }
                 });
+        });
+
+        // Database export endpoint
+        this.expressApp.get("/database/export", this.authenticateJWT, (req, res) => {
+            this.dataManager.isAdmin(req.userid).then((isAdmin) => {
+                if (!isAdmin) {
+                    return res.status(403).json({error: "Only admins can export the database"});
+                }
+
+                const dbPath = "./db";
+                const zipFilename = "docpouch-database.zip";
+                const output = fs.createWriteStream(zipFilename);
+                const archive = archiver('zip', {
+                    zlib: {level: 9} // Maximum compression
+                });
+
+                // Listen for all archive data to be written
+                output.on('close', () => {
+                    this.logger.info(`Database exported: ${archive.pointer()} total bytes`);
+
+                    // Send the zip file
+                    res.download(zipFilename, (err) => {
+                        if (err) {
+                            this.logger.error("Error sending zip file:", err);
+                        }
+
+                        // Delete the temporary zip file
+                        fs.unlink(zipFilename, (err) => {
+                            if (err) {
+                                this.logger.error("Error deleting temporary zip file:", err);
+                            }
+                        });
+                    });
+                });
+
+                // Handle errors
+                archive.on('error', (err) => {
+                    this.logger.error("Error creating zip archive:", err);
+                    res.status(500).json({error: "Error creating zip archive"});
+                });
+
+                // Pipe archive data to the file
+                archive.pipe(output);
+
+                // Check if db directory exists
+                if (!fs.existsSync(dbPath)) {
+                    return res.status(404).json({error: "Database directory not found"});
+                }
+
+                // Read all files in the db directory
+                fs.readdir(dbPath, (err, files) => {
+                    if (err) {
+                        this.logger.error("Error reading database directory:", err);
+                        return res.status(500).json({error: "Error reading database directory"});
+                    }
+
+                    // Filter for .db files
+                    const dbFiles = files.filter(file => file.endsWith('.db'));
+
+                    if (dbFiles.length === 0) {
+                        return res.status(404).json({error: "No database files found"});
+                    }
+
+                    // Add each .db file to the archive
+                    dbFiles.forEach(file => {
+                        const filePath = path.join(dbPath, file);
+                        archive.file(filePath, {name: file});
+                    });
+
+                    // Finalize the archive
+                    archive.finalize();
+                });
+            }).catch((error) => {
+                this.logger.error("Error checking admin status:", error);
+                res.status(500).json({error: "Error checking admin status"});
+            });
+        });
+
+        // Database import endpoint
+        this.expressApp.post("/database/import", this.authenticateJWT, upload.single('file'), (req, res) => {
+            this.dataManager.isAdmin(req.userid).then(async (isAdmin) => {
+                if (!isAdmin) {
+                    return res.status(403).json({error: "Only admins can import the database"});
+                }
+
+                if (!req.file) {
+                    return res.status(400).json({error: "No file uploaded"});
+                }
+
+                const uploadedFile = req.file;
+
+                try {
+                    // Check if it's a zip file
+                    if (!uploadedFile.originalname.endsWith('.zip')) {
+                        // Delete the uploaded file
+                        fs.unlinkSync(uploadedFile.path);
+                        return res.status(400).json({error: "Uploaded file is not a ZIP file"});
+                    }
+
+                    // Create AdmZip instance
+                    const zip = new AdmZip(uploadedFile.path);
+                    const zipEntries = zip.getEntries();
+
+                    // Check if all files in the zip are .db files
+                    const invalidFiles = zipEntries.filter(entry => !entry.name.endsWith('.db'));
+
+                    if (invalidFiles.length > 0) {
+                        // Delete the uploaded file
+                        fs.unlinkSync(uploadedFile.path);
+                        return res.status(400).json({
+                            error: "ZIP file contains non-database files",
+                            invalidFiles: invalidFiles.map(entry => entry.name)
+                        });
+                    }
+
+                    const dbPath = "./db";
+
+                    // Check if db directory exists, create it if not
+                    if (!fs.existsSync(dbPath)) {
+                        fs.mkdirSync(dbPath);
+                    }
+
+                    // Remove all existing files in the db directory
+                    const existingFiles = fs.readdirSync(dbPath);
+                    existingFiles.forEach(file => {
+                        const filePath = path.join(dbPath, file);
+                        fs.unlinkSync(filePath);
+                    });
+
+                    // Extract all files to the db directory
+                    zip.extractAllTo(dbPath, true);
+
+                    // Delete the uploaded file
+                    fs.unlinkSync(uploadedFile.path);
+
+                    this.logger.info("Database imported successfully");
+                    res.status(200).json({message: "Database imported successfully"});
+                } catch (error) {
+                    this.logger.error("Error importing database:", error);
+
+                    // Delete the uploaded file if it exists
+                    if (fs.existsSync(uploadedFile.path)) {
+                        fs.unlinkSync(uploadedFile.path);
+                    }
+
+                    res.status(500).json({error: "Error importing database"});
+                }
+            }).catch((error) => {
+                this.logger.error("Error checking admin status:", error);
+
+                // Delete the uploaded file if it exists
+                if (req.file && fs.existsSync(req.file.path)) {
+                    fs.unlinkSync(req.file.path);
+                }
+
+                res.status(500).json({error: "Error checking admin status"});
+            });
         });
     }
 

@@ -1,6 +1,5 @@
-import {boolean, number, object, ObjectSchema, string, array} from 'yup';
+import {boolean, number, object, ObjectSchema, string, array, mixed} from 'yup';
 import winston from 'winston';
-import {ar} from "vuetify/locale";
 
 export default class SchemaValidator {
     userCreationSchema: ObjectSchema<object>;
@@ -45,7 +44,15 @@ export default class SchemaValidator {
             subType: number().required(),
             title: string().required(),
             description: string().optional(),
-            content: array().required(),
+            content: mixed() // FIX: content should be an array or an object
+                .test(
+                    'is-array-or-object',
+                    'Content must be either an array or an object',
+                    (value) => {
+                        return Array.isArray(value) || (typeof value === 'object' && value !== null);
+                    }
+                )
+                .required()
         });
 
         this.documentUpdateSchema = object({
@@ -55,7 +62,17 @@ export default class SchemaValidator {
             subType: number().optional(),
             title: string().optional(),
             description: string().optional(),
-            content: array().optional(),
+            content: mixed() // FIX: content should be an array or an object
+                .test(
+                    'is-array-or-object',
+                    'Content must be either an array or an object',
+                    (value) => {
+                        return Array.isArray(value) || (typeof value === 'object' && value !== null);
+                    }
+                )
+                .required()
+
+
         });
 
         this.structureCreationSchema = object({

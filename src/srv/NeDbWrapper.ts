@@ -427,14 +427,21 @@ export default class NeDbWrapper {
         });
     }
 
-    createDocument(document: I_DocumentEntry, requestingUserID: string): Promise<I_DocumentEntry> {
+    createDocument(document: I_DocumentCreation, requestingUserID: string): Promise<I_DocumentEntry> {
         return new Promise((resolve, reject) => {
             // Set the owner to the requesting user
-            document.owner = requestingUserID;
+            let newDocument: I_DocumentCreationOwned = {
+                content: document.content,
+                description: document.description,
+                owner: requestingUserID,
+                subType: document.subType,
+                title: document.title,
+                type: document.type
+            }
 
-            this.documents.add(document).then((newDocument) => {
-                this.logger.info("Created new document: " + JSON.stringify(newDocument));
-                resolve(newDocument as I_DocumentEntry);
+            this.documents.add(newDocument).then((savedDocument) => {
+                this.logger.info("Created new document: " + JSON.stringify(savedDocument));
+                resolve(savedDocument as I_DocumentEntry);
             }).catch(reject);
         });
     }

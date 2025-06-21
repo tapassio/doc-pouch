@@ -92,6 +92,11 @@ function handleTypeCreated(newType: I_DocumentType) {
               @click="selectType(type._id!)"
               class="user-list-item"
           >
+            <template v-slot:prepend>
+              <v-avatar color="primary" size="32">
+                <v-icon icon="mdi-format-list-bulleted-type"></v-icon>
+              </v-avatar>
+            </template>
             <v-list-item-title>{{ type.name }}</v-list-item-title>
             <v-list-item-subtitle>
               <div class="d-flex flex-row">

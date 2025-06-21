@@ -76,7 +76,13 @@ const selectStructure = (structureID: string | undefined) => {
           :active="selectedStructureID !== null && selectedStructureID === structure.id"
           @click="selectStructure(structure.id)"
           class="structure-list-item"
-        ></v-list-item>
+        >
+          <template v-slot:prepend>
+            <v-avatar color="primary" size="32">
+              <v-icon icon="mdi-table"></v-icon>
+            </v-avatar>
+          </template>
+        </v-list-item>
         <v-list-item v-if="structures.length === 0" class="text-center pa-3 text-disabled">
           <v-icon icon="mdi-information-outline" class="mb-2"></v-icon>
           <div>No data structures defined. An administrator must create structures before documents can be added.</div>

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import type { I_UserDisplay, I_UserEntry } from "../../../types.ts";
 import UserCreationDialog from './UserCreationDialog.vue';
+import MassCreateDialog from './MassCreateDialog.vue';
 import type DbPouchClient from 'docpouch-client';
 
 const props = defineProps<{
@@ -93,6 +94,7 @@ let users = computed(() => {
 
 const selectedUserID = ref<string | null>(null);
 const showCreateUserDialog = ref(false);
+const showMassCreateDialog = ref(false);
 
 const selectUser = (userID: string | undefined) => {
   if (userID !== undefined) {
@@ -107,10 +109,17 @@ const addNewUser = () => {
   showCreateUserDialog.value = true;
 };
 
+const addMassUsers = () => {
+  console.log('Add mass users');
+  showMassCreateDialog.value = true;
+};
+
 const showSuccessSnackbar = ref(false);
+const successMessage = ref('User created successfully!');
 
 const handleUserCreated = (user: I_UserDisplay) => {
   console.log('User created:', user);
+  successMessage.value = 'User created successfully!';
   showSuccessSnackbar.value = true;
   emit('userListChanged');
 
@@ -119,6 +128,20 @@ const handleUserCreated = (user: I_UserDisplay) => {
       selectUser(user._id);
     }
   }, 100);
+};
+
+const handleUsersCreated = (users: I_UserDisplay[]) => {
+  console.log('Users created:', users);
+  successMessage.value = `${users.length} users created successfully!`;
+  showSuccessSnackbar.value = true;
+  emit('userListChanged');
+
+  // Select the first created user if available
+  if (users.length > 0 && users[0]._id !== undefined) {
+    setTimeout(() => {
+      selectUser(users[0]._id);
+    }, 100);
+  }
 };
 
 // Clear all filters
@@ -243,8 +266,11 @@ const hasActiveFilters = computed(() => {
         </v-list>
       </div>
 
-      <div v-if="isAdmin" class="d-flex justify-end mt-3">
-        <v-btn color="primary" class="mr-2" prepend-icon="mdi-plus" @click="addNewUser">New</v-btn>
+      <div class="d-flex justify-end mt-3">
+        <v-btn v-if="isAdmin" class="mr-2" color="primary" prepend-icon="mdi-plus" @click="addNewUser">New</v-btn>
+        <v-btn v-if="isAdmin" class="mr-2" color="primary" prepend-icon="mdi-file-import" @click="addMassUsers">Mass
+          Import
+        </v-btn>
         <v-btn color="error" prepend-icon="mdi-delete" @click="confirmDelete" :disabled="!selectedUserID">Remove</v-btn>
       </div>
     </div>
@@ -258,12 +284,21 @@ const hasActiveFilters = computed(() => {
       :department-list="props.departmentList"
     />
 
+  <!-- Add the mass create user dialog -->
+  <MassCreateDialog
+      v-model:show="showMassCreateDialog"
+      :api-client="apiClient"
+      :department-list="props.departmentList"
+      :group-list="props.groupList"
+      @users-created="handleUsersCreated"
+  />
+
   <v-snackbar
     v-model="showSuccessSnackbar"
     color="success"
     timeout="3000"
   >
-    User created successfully!
+    {{ successMessage }}
     <template v-slot:actions>
       <v-btn
         variant="text"
