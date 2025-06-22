@@ -44,7 +44,7 @@ export default class SchemaValidator {
             subType: number().required(),
             title: string().required(),
             description: string().optional(),
-            content: mixed() // FIX: content should be an array or an object
+            content: mixed()
                 .test(
                     'is-array-or-object',
                     'Content must be either an array or an object',
@@ -62,7 +62,7 @@ export default class SchemaValidator {
             subType: number().optional(),
             title: string().optional(),
             description: string().optional(),
-            content: mixed() // FIX: content should be an array or an object
+            content: mixed()
                 .test(
                     'is-array-or-object',
                     'Content must be either an array or an object',

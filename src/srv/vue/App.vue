@@ -141,16 +141,18 @@ async function handleStructureSelected(structureID: string) {
   console.log("Loaded structure:", loadedStructure.value);
 }
 
-async function handleDocumentUpdate(document: I_DocumentEntry) {
-  apiClient.updateDocument(document._id, document).then(() => {
-    successfullySaved();
-    fetchData().then(() => {
-      handleDocumentSelected(document._id);
+async function handleDocumentUpdate(document: I_DocumentEntry | undefined) {
+  if (document) {
+    apiClient.updateDocument(document._id, document).then(() => {
+      successfullySaved();
+      fetchData().then(() => {
+        handleDocumentSelected(document._id);
+      });
+    }).catch(error => {
+      console.error("Error updating document:", error);
+      handleApiError(error, "updating document");
     });
-  }).catch(error => {
-    console.error("Error updating document:", error);
-    handleApiError(error, "updating document");
-  });
+  }
 }
 
 async function handleDocumentRemoved(documentID: string) {
@@ -361,65 +363,57 @@ function successfullySaved() {
 
 async function handleExportDatabase() {
   try {
-    // Get the base URL from the API client
-    const baseUrl = window.location.href.slice(0, Math.min(
-        window.location.href.lastIndexOf('/'),
-        window.location.href.indexOf(':', window.location.href.indexOf('://') + 3) !== -1
-            ? window.location.href.indexOf(':', window.location.href.indexOf('://') + 3)
-            : window.location.href.length
-    ));
-
-    // Create a URL for the export endpoint
-    const exportUrl = `${baseUrl}:${serverPort}/database/export`;
-
-    // Get the authorization token
+    // Use a relative URL without port
+    const exportUrl = '/database/export';
+    
     const token = authToken.value;
-
     if (!token) {
       snackBarMessage.value = 'You must be logged in to export the database.';
       snackBarVisible.value = true;
       return;
     }
 
-    // Create a link element to trigger the download
-    const link = document.createElement('a');
-    link.href = exportUrl;
-    link.download = 'docpouch-database.zip';
+    // Show progress indicator
+    snackBarMessage.value = 'Exporting database, please wait...';
+    snackBarVisible.value = true;
 
-    // Add the authorization header
-    const headers = new Headers();
-    headers.append('Authorization', `Bearer ${token}`);
+    console.log("Fetching from URL:", exportUrl);
 
-    // Fetch the file
+    // Fetch with better error handling
     const response = await fetch(exportUrl, {
       method: 'GET',
-      headers: headers
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
     });
 
     if (!response.ok) {
-      throw new Error(`Export failed: ${response.statusText}`);
+      throw new Error(`Export failed: ${response.status} ${response.statusText}`);
     }
 
     // Get the blob from the response
     const blob = await response.blob();
-
+    console.log('Blob size:', blob.size, 'bytes');
+    
     // Create a URL for the blob
     const url = window.URL.createObjectURL(blob);
 
-    // Set the link's href to the blob URL
+    // Create a link and trigger download
+    const link = document.createElement('a');
     link.href = url;
-
-    // Trigger the download
+    link.download = 'docpouch-database.zip';
     document.body.appendChild(link);
     link.click();
 
     // Clean up
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+    
     snackBarMessage.value = 'Database export successful!';
     snackBarVisible.value = true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error exporting database:', error);
     snackBarMessage.value = `Error exporting database: ${error.message}`;
     snackBarVisible.value = true;

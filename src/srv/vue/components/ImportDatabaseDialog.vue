@@ -63,7 +63,7 @@ async function handleImport() {
     ));
 
     // Create a URL for the import endpoint
-    const importUrl = `${baseUrl}:3030/database/import`;
+    const importUrl = '/database/import';
 
     // Create form data
     const formData = new FormData();

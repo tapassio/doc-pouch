@@ -3,6 +3,7 @@
 DocPouch is a light-weight, document-based database including user management. It provides a simple yet flexible way to
 store and manage structured documents.
 
+A client library can be found here: [docpouch-client](https://github.com/BFH-JTF/docpouch-client)
 ## Purpose and Use Cases
 
 DocPouch is primarily intended for:
