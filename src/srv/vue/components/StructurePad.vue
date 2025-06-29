@@ -15,8 +15,20 @@ const emit = defineEmits<{
   'structureRemoved': [structureID: string];
 }>();
 
+// Filter states
+const nameFilter = ref('');
 const showDeleteConfirmDialog = ref(false);
 const structureToDelete = ref<string | null>(null);
+
+// Check if any filters are active
+const hasActiveFilters = computed(() => {
+  return nameFilter.value !== '';
+});
+
+// Clear all filters
+const clearFilters = () => {
+  nameFilter.value = '';
+};
 
 const confirmDelete = () => {
   if (selectedStructureID.value) {
@@ -39,12 +51,23 @@ const cancelDelete = () => {
   structureToDelete.value = null;
 };
 
-let structures = computed(() => {
-  if (!props.structurelist)
-    return [];
-  return props.structurelist.map((entry: I_DataStructure) => {
+// Enhanced filtered structures
+const filteredStructures = computed(() => {
+  if (!props.structurelist) return [];
+
+  let result = props.structurelist;
+
+  // Apply name filter
+  if (nameFilter.value) {
+    result = result.filter(structure =>
+        structure.name.toLowerCase().includes(nameFilter.value.toLowerCase())
+    );
+  }
+
+  // Map to display format and sort by name
+  return result.map((entry: I_DataStructure) => {
     return {id: entry._id, title: entry.name}
-  })
+  }).sort((a, b) => a.title.localeCompare(b.title));
 });
 
 const selectedStructureID = ref<string | null>(null);
@@ -63,14 +86,44 @@ const selectStructure = (structureID: string | undefined) => {
 
 <template>
   <div class="d-flex flex-column">
-    <v-card-text class="text-caption bg-blue-lighten-5 rounded mb-3">
-      Data structures define templates for documents. Each structure contains fields with specific types that determine what kind of data can be stored. Only administrators can modify structures.
-    </v-card-text>
+    <!-- Filter Section -->
+    <v-card class="mb-3" variant="outlined">
+      <v-card-title class="text-subtitle-1 pa-3">
+        <v-icon class="mr-2" icon="mdi-filter"></v-icon>
+        Filters
+        <v-spacer></v-spacer>
+        <v-btn
+            v-if="hasActiveFilters"
+            color="primary"
+            prepend-icon="mdi-filter-remove"
+            size="small"
+            variant="text"
+            @click="clearFilters"
+        >
+          Clear
+        </v-btn>
+      </v-card-title>
+      <v-card-text class="pa-3 pt-0">
+        <v-row no-gutters>
+          <v-col cols="12">
+            <v-text-field
+                v-model="nameFilter"
+                clearable
+                density="compact"
+                hide-details
+                label="Filter by structure name"
+                prepend-inner-icon="mdi-table"
+                variant="outlined"
+            ></v-text-field>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
 
     <div class="structure-list-wrapper">
       <v-list class="structure-list bg-grey-lighten-4" density="compact">
         <v-list-item
-          v-for="structure in structures"
+            v-for="structure in filteredStructures"
           :key="structure.id"
           :title="structure.title"
           :active="selectedStructureID !== null && selectedStructureID === structure.id"
@@ -83,7 +136,19 @@ const selectStructure = (structureID: string | undefined) => {
             </v-avatar>
           </template>
         </v-list-item>
-        <v-list-item v-if="structures.length === 0" class="text-center pa-3 text-disabled">
+
+        <!-- Empty state when no structures match filters -->
+        <v-list-item v-if="filteredStructures.length === 0 && hasActiveFilters">
+          <v-list-item-title class="text-center text-grey">
+            <v-icon class="mr-2" icon="mdi-file-search"></v-icon>
+            No structures match the current filters
+          </v-list-item-title>
+        </v-list-item>
+
+        <!-- Empty state when no structures exist -->
+        <v-list-item
+            v-if="filteredStructures.length === 0 && !hasActiveFilters && (!props.structurelist || props.structurelist.length === 0)"
+            class="text-center pa-3 text-disabled">
           <v-icon icon="mdi-information-outline" class="mb-2"></v-icon>
           <div>No data structures defined. An administrator must create structures before documents can be added.</div>
         </v-list-item>
@@ -129,3 +194,23 @@ const selectStructure = (structureID: string | undefined) => {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+.structure-list-wrapper {
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.structure-list {
+  border-radius: 4px;
+}
+
+.structure-list-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.structure-list-item:last-child {
+  border-bottom: none;
+}
+</style>

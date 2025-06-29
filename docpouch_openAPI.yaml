@@ -172,7 +172,7 @@ paths:
   /docs/list:
     get:
       summary: List documents
-      description: "List all documents owned by the user but omit their content. For administrators, all document are listed."
+      description: "List all documents owned by the user or shared with the user's group or department, but omit their content. For administrators, all documents are listed."
       tags:
         - documents
       security:
@@ -193,7 +193,7 @@ paths:
   /docs/fetch:
     post:
       summary: "Get a document based on a query object."
-      description: "Users can only fetch their own documents, while administrator can fetch any document on the server. Omit keys not used in the query."
+      description: "Users can fetch their own documents and documents shared with their group or department. Administrators can fetch any document on the server. Omit keys not used in the query."
       tags:
         - documents
       security:
@@ -223,6 +223,7 @@ paths:
   /docs/update/{documentID}:
     patch:
       summary: Update a document by applying the provided attributes
+      description: "Users can update their own documents fully. Users with shared access (via group or department) can only update the content field. Only document owners can change sharing settings."
       tags:
         - documents
       security:
@@ -461,6 +462,14 @@ components:
           type: string
           description: "The content of the document in a string. If you want to store binary data it needs to be Base64 encoded."
           example: "{\"msg\": \"We strive for a world that ... \"}"
+        shareWithGroup:
+          type: boolean
+          description: "If true, the document is shared with all users in the owner's group"
+          example: false
+        shareWithDepartment:
+          type: boolean
+          description: "If true, the document is shared with all users in the owner's department"
+          example: false
       required:
         - _id
         - title
@@ -492,6 +501,14 @@ components:
           type: string
           description: "The description of the document"
           example: "A statement describing the corporate mission or how to achieve the corporate vision"
+        shareWithGroup:
+          type: boolean
+          description: "If true, the document is shared with all users in the owner's group"
+          example: false
+        shareWithDepartment:
+          type: boolean
+          description: "If true, the document is shared with all users in the owner's department"
+          example: false
 
     NewDocument:
       type: object
@@ -513,11 +530,21 @@ components:
           type: string
           description: "The content of the document in a string. If you want to store binary data it needs to be Base64 encoded."
           example: "{\"msg\": \"We strive for a world that ... \"}"
+        shareWithGroup:
+          type: boolean
+          description: "If true, the document is shared with all users in the owner's group"
+          example: false
+        shareWithDepartment:
+          type: boolean
+          description: "If true, the document is shared with all users in the owner's department"
+          example: false
       required:
         - title
         - type
         - subtype
         - content
+        - shareWithDepartment
+        - shareWithGroup
 
     UserDisplay:
       type: object
@@ -723,7 +750,7 @@ components:
         - subType
 
 
-  
+
   securitySchemes:
     userAuth:
       type: http

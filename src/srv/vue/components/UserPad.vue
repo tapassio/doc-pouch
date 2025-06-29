@@ -89,7 +89,7 @@ let users = computed(() => {
       department: entry.department,
       group: entry.group
     };
-  });
+  }).sort((a, b) => a.username.localeCompare(b.username));
 });
 
 const selectedUserID = ref<string | null>(null);
@@ -199,6 +199,7 @@ const hasActiveFilters = computed(() => {
                 density="compact"
                 clearable
                 hide-details
+                autocomplete="off"
               ></v-select>
             </v-col>
             <v-col cols="12" md="4" class="pl-md-2 mt-2 mt-md-0">
@@ -211,6 +212,7 @@ const hasActiveFilters = computed(() => {
                 density="compact"
                 clearable
                 hide-details
+                autocomplete="off"
               ></v-select>
             </v-col>
           </v-row>

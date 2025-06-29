@@ -10,7 +10,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:show': [value: boolean];
-  'login-success': [loginInformation: I_LoginResponse | null];
+  'login-success': [loginInformation: I_LoginResponse];
 }>();
 
 const username = ref('');

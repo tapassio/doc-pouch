@@ -4,13 +4,7 @@ import DocumentDisplay from "./components/DocumentDisplay.vue";
 import LoginDialog from "./components/LoginDialog.vue";
 import {ref, onMounted, computed, watch} from "vue";
 import DbPouchClient from "docpouch-client";
-import type {
-  I_DocumentEntry,
-  I_UserEntry,
-  I_DataStructure,
-  I_LoginResponse,
-  I_DocumentType
-} from "../../types.ts";
+// import type {} from "../../types.ts";
 import ImportDatabaseDialog from "./components/ImportDatabaseDialog.vue";
 import UserDisplay from "./components/UserDisplay.vue";
 import StructurePad from "./components/StructurePad.vue";
@@ -18,7 +12,14 @@ import DocumentPad from "./components/DocumentPad.vue";
 import StructureDisplay from "./components/StructureDisplay.vue";
 import docPouchLogo from './assets/docPouch.png';
 import AboutDialog from "./components/AboutDialog.vue";
-import type {I_EventString} from "docpouch-client/dist/types";
+import type {
+  I_EventString,
+  I_DocumentEntry,
+  I_UserEntry,
+  I_DataStructure,
+  I_LoginResponse,
+  I_DocumentType
+} from "docpouch-client/dist/types";
 import TypePad from "./components/TypePad.vue";
 import TypeDisplay from "./components/TypeDisplay.vue";
 
@@ -31,6 +32,7 @@ enum DisplayComponent {
 }
 
 const authToken = ref<string | null>(null);
+let loggedInUsername = ref<string | undefined>(undefined);
 const expandedPanel = ref('documents'); // Default to users panel being open
 const userArray = ref(<I_UserEntry[]>[]);
 const docArray = ref(<I_DocumentEntry[]>[]);
@@ -59,13 +61,14 @@ function setToken(token: string | null) {
   console.log("Setting token:", token ? "token present" : "null");
   authToken.value = token;
   apiClient.setToken(token);
+
   if (token)
     localStorage.setItem('authToken', token);
   else
     localStorage.removeItem('authToken');
 }
 
-watch(authToken, (newToken, oldToken) => {
+watch(authToken, (newToken) => {
   if (newToken !== null && realtimeUpdates.value === true) {
     fetchData();
     apiClient.setRealTimeSync(true);
@@ -113,14 +116,16 @@ function handleNetworkEvent(event: I_EventString, data: any) {
       break;
 
     case "newDocument":
+    case "changedDocument": //TODO If the changed document is being displayed, the display needs to be updated.
     case "removedDocument":
       apiClient.listDocuments().then(documents => {
         docArray.value = documents;
       })
       break;
 
-    case "changedDocument":
-      break;
+    case "newType":
+      break
+
 
   }
 }
@@ -237,6 +242,7 @@ function handleLoginSuccess(loginInformation: I_LoginResponse | null) {
   if (loginInformation !== null) {
     console.log("Login success, setting token");
     setToken(loginInformation.token);
+    loggedInUsername.value = loginInformation.userName;
     if (loginInformation.isAdmin !== undefined) {
       localStorage.setItem('isAdmin', String(loginInformation.isAdmin));
     }
@@ -249,7 +255,6 @@ function handleLoginSuccess(loginInformation: I_LoginResponse | null) {
 
 onMounted(async () => {
   const storedToken = localStorage.getItem('authToken');
-  const storedIsAdmin = localStorage.getItem('isAdmin');
 
   if (storedToken) {
     console.log("Found token in local storage. Setting it.");
@@ -326,6 +331,7 @@ function handleLogout() {
   loadedStructure.value = undefined;
   shownComponent.value = DisplayComponent.documentViewer;
   showLoginDialog.value = true;
+  loggedInUsername.value = '';
 }
 
 function handleApiError(error: unknown, context: string = "API operation") {
@@ -434,7 +440,7 @@ async function handleExportDatabase() {
             @click="showAboutDialog = true"
         ></v-img>
 
-        <v-app-bar-title>DocPouch Administration</v-app-bar-title>
+        <v-app-bar-title>DocPouch Administration <small>[User: {{ loggedInUsername }}]</small></v-app-bar-title>
         <v-spacer></v-spacer>
         <div v-if="isLoggedIn" class="d-flex align-center mr-4">
           <v-switch

@@ -28,3 +28,12 @@ Content-Type: application/json
   "group": "Expression Dance",
   "isAdmin": false
 }
+> {%
+    client.global.set("new_user_id", response.body._id);
+%}
+
+### Delete test user
+DELETE {{base-url}}/users/remove/{{new_user_id}}
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+

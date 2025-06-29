@@ -58,6 +58,8 @@ export default class NeDbWrapper {
                             this.getAdminUser().then((admin) => {
                                 if (admin._id) {
                                     let defaultDocument: I_DocumentCreationOwned = {
+                                        shareWithDepartment: false,
+                                        shareWithGroup: false,
                                         title: "Demo Document",
                                         owner: admin._id,
                                         description: "This is just a demo, delete when you don't need it anymore",
@@ -70,7 +72,7 @@ export default class NeDbWrapper {
                                     }
 
                                     this.documents.add(defaultDocument).then((document) => {
-                                        this.logger.info(`Created new document: ${JSON.stringify(defaultDocument)}`);
+                                        this.logger.info(`Created new document: ${JSON.stringify(document)}`);
                                     });
 
                                     this.structures.count({}).then((counter) => {
@@ -137,25 +139,77 @@ export default class NeDbWrapper {
                         });
                     }
                 });
-            } else {
-                // Backward compatibility for calls without user ID
-                this.users.query({}).then((result) => { 
-                    resolve(result as I_UserEntry[]);
-                });
             }
         })
     }
 
-    getUserByName(username: string): Promise<I_UserEntry>{
+    getUsersByGroupName(groupName: string, departmentName: string): Promise<I_UserEntry[]> {
         return new Promise((resolve, reject) => {
-            this.users.query({ name: username })
+            let users: I_UserEntry[] = [];
+            this.users.query({group: groupName, department: departmentName})
                 .then((result) => {
                     if (result.length > 0)
-                        resolve(result[0] as I_UserEntry);
+                        resolve(result as I_UserEntry[]);
                     else
                         reject("User not found");
                 })
         })
+    }
+
+    getUsersByDepartmentName(departmentName: string): Promise<I_UserEntry[]> {
+        return new Promise((resolve, reject) => {
+            let users: I_UserEntry[] = [];
+            this.users.query({department: departmentName})
+                .then((result) => {
+                    if (result.length > 0)
+                        resolve(result as I_UserEntry[]);
+                    else
+                        reject("User not found");
+                })
+        })
+    }
+
+    listDocAccess(userID: string): Promise<I_DocumentEntry[]> {
+        return new Promise(async (resolve, reject) => {
+            let returnArray: I_DocumentEntry[] = [];
+            try {
+                // Check if user is admin
+                const isAdmin = await this.isAdmin(userID);
+
+                if (isAdmin) {
+                    // Admin can see all documents
+                    const allDocs = await this.documents.query({}) as I_DocumentEntry[];
+                    resolve(allDocs);
+                    return;
+                }
+
+                const user = await this.getUserByID(userID);
+                const departmentUsers = await this.getUsersByDepartmentName(user.department);
+                const departmentUserIds = departmentUsers.map(u => u._id);
+                const departmentQuery = {
+                    $or: [
+                        {owner: userID},
+                        {
+                            shareWithDepartment: true,
+                            owner: {$in: departmentUserIds}
+                        }
+                    ]
+                }
+                returnArray.push(...await this.documents.query(departmentQuery) as I_DocumentEntry[]);
+
+                const groupUsers = await this.getUsersByGroupName(user.group, user.department);
+                const groupUserIds = groupUsers.map(u => u._id);
+                const groupQuery = {
+                    shareWithGroup: true,
+                    owner: {$in: groupUserIds}
+                }
+                returnArray.push(...await this.documents.query(groupQuery) as I_DocumentEntry[]);
+
+                resolve(returnArray);
+            } catch (error) {
+                reject(error);
+            }
+        });
     }
 
     createUser(newUser: I_UserCreation): Promise<I_UserEntry> {
@@ -391,39 +445,50 @@ export default class NeDbWrapper {
     // Document methods with access control
 
     getAllDocuments(requestingUserID: string): Promise<I_DocumentEntry[]> {
-        return new Promise((resolve, reject) => {
-            this.isAdmin(requestingUserID).then((isAdmin) => {
-                if (isAdmin) {
-                    // Admin can see all documents
-                    this.documents.query({}).then((result) => {
-                        resolve(result as I_DocumentEntry[]);
-                    });
-                } else {
-                    // Normal user can only see their own documents
-                    this.documents.query({owner: requestingUserID}).then((result) => {
-                        resolve(result as I_DocumentEntry[]);
-                    });
-                }
-            });
-        });
+        return this.listDocAccess(requestingUserID);
     }
 
     fetchDocuments(queryObject: I_DocumentQuery, requestingUserID: string): Promise<I_DocumentEntry[]> {
-        return new Promise((resolve, reject) => {
-            this.isAdmin(requestingUserID).then((isAdmin) => {
-                if (!isAdmin){
-                    queryObject.owner = requestingUserID;
-                }
-            })
+        return new Promise(async (resolve, reject) => {
+            try {
+                // First, get all documents the user has access to
+                const accessibleDocs = await this.listDocAccess(requestingUserID);
 
-            this.documents.query(queryObject).then((result) => {
-                if (result.length === 0) {
-                    reject("Document not found");
-                    return;
+                // Then filter those documents based on the query object
+                const matchingDocs = accessibleDocs.filter(doc => {
+                    return Object.entries(queryObject).every(([key, value]) => {
+                        if (value === undefined || value === null) {
+                            return true;
+                        }
+
+                        if (!(key in doc)) {
+                            return false;
+                        }
+
+                        // For string values, allow case-insensitive comparison if both are strings
+                        if (typeof value === 'string' && typeof doc[key as keyof I_DocumentEntry] === 'string') {
+                            return (doc[key as keyof I_DocumentEntry] as string).toLowerCase() === value.toLowerCase();
+                        }
+
+                        // For numbers, allow string/number conversion
+                        if ((typeof value === 'number' || typeof doc[key as keyof I_DocumentEntry] === 'number') &&
+                            !isNaN(Number(value)) && !isNaN(Number(doc[key as keyof I_DocumentEntry]))) {
+                            return Number(doc[key as keyof I_DocumentEntry]) === Number(value);
+                        }
+
+                        // Default to strict equality
+                        return doc[key as keyof I_DocumentEntry] === value;
+                    });
+                });
+
+                // Return empty array instead of rejecting when no docs found
+                if (matchingDocs.length === 0) {
+                    return resolve([]);
                 }
-                const documents = result as I_DocumentEntry[];
-                resolve(documents);
-            });
+                resolve(matchingDocs);
+            } catch (error) {
+                reject(error);
+            }
         });
     }
 
@@ -436,7 +501,9 @@ export default class NeDbWrapper {
                 owner: requestingUserID,
                 subType: document.subType,
                 title: document.title,
-                type: document.type
+                type: document.type,
+                shareWithGroup: document.shareWithGroup,
+                shareWithDepartment: document.shareWithDepartment
             }
 
             this.documents.add(newDocument).then((savedDocument) => {
@@ -447,59 +514,85 @@ export default class NeDbWrapper {
     }
 
     updateDocument(documentID: string, updateData: Partial<I_DocumentEntry>, requestingUserID: string): Promise<number> {
-        return new Promise((resolve, reject) => {
-            this.documents.query({_id: documentID}).then((result) => {
-                if (result.length === 0) {
-                    reject("Document not found");
+        return new Promise(async (resolve, reject) => {
+            try {
+                // First, get all documents the user has access to
+                const accessibleDocs = await this.listDocAccess(requestingUserID);
+
+                // Find the specific document
+                const document = accessibleDocs.find(doc => doc._id === documentID);
+
+                if (!document) {
+                    reject("Document not found or you don't have access to it");
                     return;
                 }
 
-                const document = result[0] as I_DocumentEntry;
+                const isAdmin = await this.isAdmin(requestingUserID);
 
-                this.isAdmin(requestingUserID).then((isAdmin) => {
-                    if (isAdmin || document.owner === requestingUserID) {
-                        // Don't allow changing the owner
-                        if (updateData.owner !== undefined && updateData.owner !== document.owner) {
-                            reject("Cannot change document owner");
-                            return;
-                        }
+                // Don't allow changing the owner
+                if (updateData.owner !== undefined && updateData.owner !== document.owner) {
+                    reject("Cannot change document owner");
+                    return;
+                }
 
-                        this.documents.update(documentID, updateData).then((numUpdated) => {
+                // Check update permissions based on user's relationship to the document
+                if (isAdmin || document.owner === requestingUserID) {
+                    // Admin or owner can update all fields except owner
+                    this.documents.update(documentID, updateData).then((numUpdated) => {
+                        resolve(numUpdated);
+                    }).catch(reject);
+                } else {
+                    // Users with shared access can only update content
+                    const allowedUpdates: Partial<I_DocumentEntry> = {};
+
+                    // Only allow updating content
+                    if (updateData.content !== undefined) {
+                        allowedUpdates.content = updateData.content;
+                    }
+
+                    if (Object.keys(allowedUpdates).length > 0) {
+                        this.documents.update(documentID, allowedUpdates).then((numUpdated) => {
                             resolve(numUpdated);
                         }).catch(reject);
                     } else {
-                        reject("Not authorized to update this document");
+                        reject("You can only update the content of shared documents");
                     }
-                });
-            });
+                }
+            } catch (error) {
+                reject(error);
+            }
         });
     }
 
     removeDocument(documentID: string, requestingUserID: string): Promise<number> {
-        return new Promise((resolve, reject) => {
-            this.documents.query({_id: documentID}).then((result) => {
-                if (result.length === 0) {
-                    reject("Document not found");
-                    return;
-                }
-
-                const document = result[0] as I_DocumentEntry;
-
-                this.isAdmin(requestingUserID).then((isAdmin) => {
-                    if (isAdmin || document.owner === requestingUserID) {
-                        this.documents.remove({_id: documentID}).then((numRemoved) => {
-                            if (numRemoved > 0) {
-                                this.logger.info("Removed document: " + JSON.stringify(documentID));
-                                resolve(numRemoved);
-                            } else {
-                                reject("Document not found");
-                            }
-                        });
-                    } else {
-                        reject("Not authorized to remove this document");
+        return new Promise(async (resolve, reject) => {
+            try {
+                // Find the specific document
+                this.documents.query({_id: documentID}).then((result) => {
+                    if (result.length !== 1) {
+                        reject("Document not found or you don't have access to it");
+                        return;
                     }
+                    let document = result[0] as I_DocumentEntry;
+                    const isAdmin = this.isAdmin(requestingUserID).then((isAdmin) => {
+                        if (isAdmin || document.owner === requestingUserID) {
+                            this.documents.remove({_id: documentID}).then((numRemoved) => {
+                                if (numRemoved > 0) {
+                                    this.logger.info("Removed document: " + JSON.stringify(documentID));
+                                    resolve(numRemoved);
+                                } else {
+                                    reject("Document not found");
+                                }
+                            }).catch(reject);
+                        } else {
+                            reject("Not authorized to remove this document");
+                        }
+                    });
                 });
-            });
+
+            } catch (error) {
+                reject(error);
+            }
         });
     }
 
@@ -511,7 +604,7 @@ export default class NeDbWrapper {
         });
     }
 
-    editDocumentType(newTypeData: I_DocumentType): Promise<I_DocumentType> {
+    writeDocumentType(newTypeData: I_DocumentType): Promise<I_DocumentType> {
         return new Promise((resolve, reject) => {
             // Check for duplicate type and subtype combination before creating or updating
             this.types.query({type: newTypeData.type, subType: newTypeData.subType}).then(docs => {

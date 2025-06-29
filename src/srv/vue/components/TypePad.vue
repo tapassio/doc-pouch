@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {ref} from 'vue';
+import {ref, computed} from 'vue';
 import type {I_DocumentType, I_StructureEntry} from "../../../types.ts";
 import TypeCreationDialog from './TypeCreationDialog.vue';
 import type DbPouchClient from 'docpouch-client';
@@ -17,9 +17,7 @@ const emit = defineEmits<{
 }>();
 
 // Filter states
-const typeFilter = ref('');
-const hasActiveFilters = ref(false);
-
+const nameFilter = ref('');
 const showDeleteConfirmDialog = ref(false);
 const showCreationDialog = ref(false);
 const selectedTypeID = ref<string | null>(null);
@@ -70,27 +68,79 @@ function handleTypeCreated(newType: I_DocumentType) {
   }
 }
 
+// Enhanced filtering
+const filteredTypes = computed(() => {
+  if (!props.typeList) return [];
+
+  let filteredList = props.typeList.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Apply name filter
+  if (nameFilter.value) {
+    filteredList = filteredList.filter(type =>
+        type.name.toLowerCase().includes(nameFilter.value.toLowerCase())
+    );
+  }
+
+  return filteredList;
+});
+
+// Check if any filters are active
+const hasActiveFilters = computed(() => {
+  return nameFilter.value !== '';
+});
+
+// Clear all filters
+const clearFilters = () => {
+  nameFilter.value = '';
+};
 </script>
 
 <template>
   <v-card>
     <v-card-text>
-      <!-- Filters -->
-      <v-row>
-        <v-col cols="12">
-          <v-text-field v-model="typeFilter" label="Type Filter"/>
-        </v-col>
-      </v-row>
+      <!-- Filter Section -->
+      <v-card class="mb-3" variant="outlined">
+        <v-card-title class="text-subtitle-1 pa-3">
+          <v-icon class="mr-2" icon="mdi-filter"></v-icon>
+          Filters
+          <v-spacer></v-spacer>
+          <v-btn
+              v-if="hasActiveFilters"
+              color="primary"
+              prepend-icon="mdi-filter-remove"
+              size="small"
+              variant="text"
+              @click="clearFilters"
+          >
+            Clear
+          </v-btn>
+        </v-card-title>
+        <v-card-text class="pa-3 pt-0">
+          <v-row no-gutters>
+            <v-col cols="12">
+              <v-text-field
+                  v-model="nameFilter"
+                  clearable
+                  density="compact"
+                  hide-details
+                  label="Filter by type name"
+                  prepend-inner-icon="mdi-format-list-bulleted-type"
+                  variant="outlined"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+        </v-card-text>
+      </v-card>
 
       <!-- Type List -->
-      <div class="user-list-wrapper">
-        <v-list class="user-list bg-grey-lighten-4" density="compact">
+      <div class="type-list-wrapper">
+        <v-list class="type-list bg-grey-lighten-4" density="compact">
           <v-list-item
-              v-for="type in props.typeList"
+              v-for="type in filteredTypes"
               :key="type._id"
               :active="selectedTypeID !== null && selectedTypeID === type._id"
               @click="selectType(type._id!)"
-              class="user-list-item"
+              class="type-list-item"
           >
             <template v-slot:prepend>
               <v-avatar color="primary" size="32">
@@ -101,27 +151,29 @@ function handleTypeCreated(newType: I_DocumentType) {
             <v-list-item-subtitle>
               <div class="d-flex flex-row">
                 <span class="mr-3">
-                  <v-icon icon="format-list-bulleted-type" size="small" class="mr-1"></v-icon>
+                  <v-icon class="mr-1" icon="mdi-format-list-bulleted-type" size="small"></v-icon>
                   Type: {{ type.type }}
                 </span>
                 <span>
-                  <v-icon icon="file-tree" size="small" class="mr-1"></v-icon>
+                  <v-icon class="mr-1" icon="mdi-file-tree" size="small"></v-icon>
                   Subtype: {{ type.subType }}
                 </span>
               </div>
             </v-list-item-subtitle>
           </v-list-item>
 
-          <!-- Empty state when no users match filters -->
-          <v-list-item v-if="props.typeList?.length === 0 && hasActiveFilters">
+          <!-- Empty state when no types match filters -->
+          <v-list-item v-if="filteredTypes.length === 0 && hasActiveFilters">
             <v-list-item-title class="text-center text-grey">
+              <v-icon class="mr-2" icon="mdi-file-search"></v-icon>
               No types match the current filters
             </v-list-item-title>
           </v-list-item>
 
-          <!-- Empty state when no users exist -->
-          <v-list-item v-if="props.typeList?.length === 0 && !hasActiveFilters">
+          <!-- Empty state when no types exist -->
+          <v-list-item v-if="filteredTypes.length === 0 && !hasActiveFilters && props.typeList?.length === 0">
             <v-list-item-title class="text-center text-grey">
+              <v-icon class="mr-2" icon="mdi-format-list-bulleted-type-plus"></v-icon>
               No types available. Click "New" to create the first document type.
             </v-list-item-title>
           </v-list-item>
@@ -142,7 +194,6 @@ function handleTypeCreated(newType: I_DocumentType) {
           @cancel-dialog="cancelCreation"
       />
 
-
       <!-- Delete Confirmation Dialog -->
       <v-dialog v-model="showDeleteConfirmDialog" max-width="500px">
         <v-card>
@@ -160,5 +211,21 @@ function handleTypeCreated(newType: I_DocumentType) {
 </template>
 
 <style scoped>
-/* Add your custom styles here */
+.type-list-wrapper {
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.type-list {
+  border-radius: 4px;
+}
+
+.type-list-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.type-list-item:last-child {
+  border-bottom: none;
+}
 </style>

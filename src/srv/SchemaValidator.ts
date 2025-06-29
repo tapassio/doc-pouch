@@ -44,6 +44,8 @@ export default class SchemaValidator {
             subType: number().required(),
             title: string().required(),
             description: string().optional(),
+            shareWithGroup: boolean().required(),
+            shareWithDepartment: boolean().required(),
             content: mixed()
                 .test(
                     'is-array-or-object',
@@ -62,6 +64,8 @@ export default class SchemaValidator {
             subType: number().optional(),
             title: string().optional(),
             description: string().optional(),
+            shareWithGroup: boolean().optional(),
+            shareWithDepartment: boolean().optional(),
             content: mixed()
                 .test(
                     'is-array-or-object',
@@ -71,8 +75,6 @@ export default class SchemaValidator {
                     }
                 )
                 .required()
-
-
         });
 
         this.structureCreationSchema = object({
@@ -93,6 +95,8 @@ export default class SchemaValidator {
             title: string().optional(),
             type: number().optional(),
             subType: number().optional(),
+            shareWithGroup: boolean().optional(),
+            shareWithDepartment: boolean().optional(),
         })
 
         this.typeCreationSchema = object({
@@ -107,9 +111,9 @@ export default class SchemaValidator {
         this.logger.debug('SchemaValidator initialized with schemas');
     }
 
-validate(template: string, userInput: object): boolean {
+    getValidatedObject(template: string, userInput: object): object | false {
     try {
-        let res;
+        let res: object;
         switch (template) {
             case "userCreation":
                 res = this.userCreationSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
@@ -144,11 +148,9 @@ validate(template: string, userInput: object): boolean {
                 return false;
         }
 
-        this.logger.debug(`Validation successful for schema: ${template}`, { 
-            castedFields: Object.keys(res) 
-        });
+        this.logger.debug(`Validation successful for schema: ${template}`);
 
-        return true;
+        return res;
     }
     catch (error: any) {
         this.logger.error(`Validation error for schema: ${template}`, { 

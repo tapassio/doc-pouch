@@ -42,6 +42,7 @@ export interface I_UserDisplay {
 export interface I_LoginResponse {
     token: string;
     isAdmin: boolean;
+    userName: string
 }
 
 // Document-related types
@@ -59,6 +60,8 @@ export interface I_DocumentCreation {
     type: number;
     subType: number;
     content: any;
+    shareWithGroup: boolean;
+    shareWithDepartment: boolean;
 }
 
 export interface I_DocumentQuery {
@@ -67,6 +70,8 @@ export interface I_DocumentQuery {
     title?: string;
     type?: number;
     subType?: number;
+    shareWithGroup?: boolean;
+    shareWithDepartment?: boolean;
 }
 
 export interface I_DocumentUpdate extends I_DocumentQuery{

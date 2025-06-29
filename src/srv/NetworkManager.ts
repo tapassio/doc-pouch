@@ -3,7 +3,7 @@ import express from 'express';
 import path, {dirname} from 'path';
 import {fileURLToPath} from 'url';
 import cors from 'cors';
-import type {I_DocumentType, I_UserEntry, I_UserUpdate} from "../types.ts";
+import type {I_DocumentType, I_UserCreation, I_UserEntry, I_UserUpdate} from "../types.ts";
 import NeDbWrapper from "./NeDbWrapper.js";
 import winston from "winston";
 import jwt from "jsonwebtoken"
@@ -73,7 +73,7 @@ export default class NetworkManager {
         // Configure multer for file uploads
         const upload = multer({
             dest: 'uploads/',
-            limits: {fileSize: 50 * 1024 * 1024} // 50MB limit
+            limits: {fileSize: 100 * 1024 * 1024} // 100MB limit
         });
 
         this.expressApp.get('/users/list', this.authenticateJWT, (req, res) => {
@@ -86,13 +86,14 @@ export default class NetworkManager {
         });
 
         this.expressApp.post("/users/create", this.authenticateJWT, (req, res) => {
-            if (this.validator.validate("userCreation", req.body)) {
+            let validatedObject = this.validator.getValidatedObject("userCreation", req.body);
+            if (validatedObject !== false) {
                 this.dataManager.isAdmin(req.userid).then((isAdmin) => {
                     if (isAdmin) {
-                        this.dataManager.createUser(req.body)
+                        this.dataManager.createUser(validatedObject as I_UserCreation)
                             .then((newUser) => {
                                 this.socketServer.sendEventToAdmins(req.socketID, "newUser", {newUser: newUser});
-                                this.logger.info("New user created:", newUser);
+                                this.logger.info(`New user created: ${JSON.stringify(newUser)}`);
                                 res.status(200).json(newUser);
                             })
                             .catch((error) => {
@@ -109,10 +110,10 @@ export default class NetworkManager {
             this.logger.info("Login request received");
 
             try {
-                const isValid = this.validator.validate("userLogin", req.body);
-                this.logger.debug(`Validation result: ${isValid}`);
+                const validatedObject = this.validator.getValidatedObject("userLogin", req.body);
+                this.logger.debug(`Validation result: ${validatedObject}`);
 
-                if (isValid) {
+                if (validatedObject) {
                     this.logger.debug("Validation passed, calling validateUser");
                     this.dataManager.validateUser(req.body.name, req.body.password)
                         .then((user: I_UserEntry) => {
@@ -146,10 +147,12 @@ export default class NetworkManager {
         })
 
         this.expressApp.patch("/users/update/:userID", this.authenticateJWT, (req: Request, res: Response) => {
-            if (this.validator.validate("userUpdate", req.body)) {
+            const validatedObject = this.validator.getValidatedObject("userUpdate", req.body);
+
+            if (validatedObject !== false) {
                 const userID = req.params.userID;
                 const checkPermission = async () => {
-                    if (req.userid === userID && !("isAdmin" in req.body)) {
+                    if (req.userid === userID && !("isAdmin" in validatedObject)) {
                         return true; // User can update their own profile
                     }
 
@@ -221,7 +224,7 @@ export default class NetworkManager {
 
         this.expressApp.post("/docs/fetch", this.authenticateJWT, (req, res) => {
             let queryObject = req.body;
-            this.validator.validate("documentFetch", queryObject);
+            this.validator.getValidatedObject("documentFetch", queryObject);
 
             this.dataManager.fetchDocuments(req.body, req.userid)
                 .then((document) => {
@@ -239,10 +242,15 @@ export default class NetworkManager {
         });
 
         this.expressApp.post("/docs/create", this.authenticateJWT, (req, res) => {
-            if (this.validator.validate("documentCreation", req.body)) {
+            if (this.validator.getValidatedObject("documentCreation", req.body)) {
                 this.dataManager.createDocument(req.body, req.userid)
                     .then((document) => {
-                        this.socketServer.sendEventToUser(req.socketID, req.userid, "newDocument", {newDocument: document});
+                        // Send to document owner and users with access
+                        if (document._id) {
+                            this.socketServer.sendEventToDocumentAccessors(req.socketID, document._id, "newDocument", {newDocument: document});
+                        } else {
+                            this.socketServer.sendEventToUser(req.socketID, req.userid, "newDocument", {newDocument: document});
+                        }
                         this.logger.info(`New document created: ${JSON.stringify(document)}`);
                         res.status(200).json(document);
                     })
@@ -257,11 +265,11 @@ export default class NetworkManager {
         });
 
         this.expressApp.patch("/docs/update/:documentID", this.authenticateJWT, (req, res) => {
-            if (this.validator.validate("documentUpdate", req.body)) {
+            if (this.validator.getValidatedObject("documentUpdate", req.body)) {
                 this.dataManager.updateDocument(req.params.documentID, req.body, req.userid)
                     .then((numUpdated) => {
                         if (numUpdated > 0) {
-                            this.socketServer.sendEventToUser(req.socketID, req.userid, "changedDocument", {changedDocument: req.body});
+                            this.socketServer.sendEventToDocumentAccessors(req.socketID, req.params.documentID, "changedDocument", {changedDocument: req.body});
                             res.status(200).json({message: "Document updated successfully"});
                         } else {
                             res.status(404).json({error: "Document not found"});
@@ -280,23 +288,25 @@ export default class NetworkManager {
         });
 
         this.expressApp.delete("/docs/remove/:documentID", this.authenticateJWT, (req, res) => {
-            this.dataManager.removeDocument(req.params.documentID, req.userid)
-                .then((numRemoved) => {
-                    if (numRemoved > 0) {
-                        res.status(200).json({message: "Document removed successfully"});
-                        this.socketServer.sendEventToUser(req.socketID, req.userid, "removedDocument", {removedID: req.params.documentID});
-                        this.logger.info("Document removed:", req.params.documentID);
-                    } else {
-                        res.status(404).json({error: "Document not found"});
-                    }
-                })
-                .catch((error) => {
-                    if (error === "Not authorized to remove this document") {
-                        res.status(403).json({error: error});
-                    } else {
-                        res.status(500).json({error: error.message || error});
-                    }
-                });
+            this.socketServer.sendEventToDocumentAccessors(req.socketID, req.params.documentID, "removedDocument", {removedID: req.params.documentID}).then(() => {
+                this.dataManager.removeDocument(req.params.documentID, req.userid)
+                    .then((numRemoved) => {
+                        if (numRemoved > 0) {
+                            res.status(200).json({message: "Document removed successfully"});
+
+                            this.logger.info(`Document removed: ${req.params.documentID}`);
+                        } else {
+                            res.status(404).json({error: "Document not found"});
+                        }
+                    })
+                    .catch((error) => {
+                        if (error === "Not authorized to remove this document") {
+                            res.status(403).json({error: error});
+                        } else {
+                            res.status(500).json({error: error.message || error});
+                        }
+                    });
+            })
         });
 
         // Structure endpoints with access control
@@ -311,10 +321,10 @@ export default class NetworkManager {
         });
 
         this.expressApp.post("/structures/create", this.authenticateJWT, (req, res) => {
-            if (this.validator.validate("structureCreation", req.body)) {
+            if (this.validator.getValidatedObject("structureCreation", req.body)) {
                 this.dataManager.createStructure(req.body, req.userid)
                     .then((structure) => {
-                        this.socketServer.sendEventToUser(req.socketID, req.userid, "newStructure", {newStructure: structure});
+                        this.socketServer.sendEventToAllClients(req.socketID, "newStructure", {newStructure: structure});
                         this.logger.info("New structure created:", structure);
                         res.status(200).json(structure);
                     })
@@ -331,13 +341,13 @@ export default class NetworkManager {
         });
 
         this.expressApp.patch("/structures/update/:structureID", this.authenticateJWT, (req, res) => {
-            if (this.validator.validate("structureUpdate", req.body)) {
+            if (this.validator.getValidatedObject("structureUpdate", req.body)) {
                 const structureID = parseInt(req.params.structureID);
                 this.dataManager.updateStructure(structureID, req.body, req.userid)
                     .then((numUpdated) => {
                         if (numUpdated > 0) {
                             res.status(200).json({message: "Structure updated successfully"});
-                            this.socketServer.sendEventToUser(req.socketID, req.userid, "changedStructure", {changedStructure: req.body});
+                            this.socketServer.sendEventToAllClients(req.socketID, "changedStructure", {changedStructure: req.body});
                             this.logger.info("Structure updated:", req.body);
                         } else {
                             res.status(404).json({error: "Structure not found"});
@@ -361,7 +371,7 @@ export default class NetworkManager {
                 .then((numRemoved) => {
                     if (numRemoved > 0) {
                         res.status(200).json({message: "Structure removed successfully"});
-                        this.socketServer.sendEventToUser(req.socketID, req.userid, "removedStructure", {removedID: structureID})
+                        this.socketServer.sendEventToAllClients(req.socketID, "removedStructure", {removedID: structureID});
                         this.logger.info("Structure removed:", structureID);
                     } else {
                         res.status(404).json({error: "Structure not found"});
@@ -376,12 +386,12 @@ export default class NetworkManager {
                 });
         });
 
-        this.expressApp.patch("/types/write", this.authenticateJWT, (req, res) => {
+        this.expressApp.post("/types/write", this.authenticateJWT, (req, res) => {
             console.log("Writing document type: ", req.body);
-            if (this.validator.validate("typeCreation", req.body)) {
-                this.dataManager.editDocumentType(req.body)
+            if (this.validator.getValidatedObject("typeCreation", req.body)) {
+                this.dataManager.writeDocumentType(req.body)
                     .then((structure) => {
-                        this.socketServer.sendEventToAdmins(req.socketID, "newType", {newType: structure});
+                        this.socketServer.sendEventToAllClients(req.socketID, "newType", {newType: structure});
                         this.logger.info("New document type created:", structure);
                         res.status(200).json(structure);
                     })
@@ -412,7 +422,7 @@ export default class NetworkManager {
                 .then((numRemoved) => {
                     if (numRemoved > 0) {
                         res.status(200).json({message: "Document type removed successfully"});
-                        this.socketServer.sendEventToAdmins(req.socketID, "removedDataType", {removedID: documentTypeID})
+                        this.socketServer.sendEventToAllClients(req.socketID, "removedType", {removedID: documentTypeID});
                         this.logger.info("Document type removed:", documentTypeID);
                     } else {
                         res.status(404).json({error: "Document type not found"});

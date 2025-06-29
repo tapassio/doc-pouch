@@ -76,11 +76,11 @@ const availableSubtypes = computed(() => {
 // Get unique owners (usernames, not IDs) for filter dropdown
 const availableOwners = computed(() => {
   if (!props.documentList || !props.userlist) return [];
-  
+
   const ownerUsernames = props.documentList
     .map(doc => getUsernameFromID(doc.owner))
     .filter(Boolean);
-  
+
   return [...new Set(ownerUsernames)].sort();
 });
 
@@ -88,7 +88,7 @@ const availableOwners = computed(() => {
 const documents = computed(() => {
   if (!props.documentList) return [];
 
-  let filteredDocs = props.documentList;
+  let filteredDocs = props.documentList.sort((a, b) => a.title.localeCompare(b.title));
 
   // Apply filters
   if (titleFilter.value) {
@@ -117,7 +117,9 @@ const documents = computed(() => {
       type: entry.type,
       subType: entry.subType,
       owner: getUsernameFromID(entry.owner), // Display username instead of ID
-      ownerId: entry.owner // Keep the original owner ID for reference
+      ownerId: entry.owner, // Keep the original owner ID for reference
+      shareWithGroup: entry.shareWithGroup || false,
+      shareWithDepartment: entry.shareWithDepartment || false
     };
   });
 });
@@ -256,9 +258,25 @@ const hasActiveFilters = computed(() => {
                 <v-icon icon="mdi-format-list-text" size="small" class="mr-1"></v-icon>
                 Subtype: {{ document.subType }}
               </span>
-              <span>
+              <span class="mr-3">
                 <v-icon icon="mdi-account" size="small" class="mr-1"></v-icon>
                 {{ document.owner }}
+              </span>
+              <span v-if="document.shareWithGroup" class="mr-2">
+                <v-tooltip location="top">
+                  <template v-slot:activator="{ props }">
+                    <v-icon color="primary" icon="mdi-account-group" size="small" v-bind="props"></v-icon>
+                  </template>
+                  <span>Shared with group</span>
+                </v-tooltip>
+              </span>
+              <span v-if="document.shareWithDepartment">
+                <v-tooltip location="top">
+                  <template v-slot:activator="{ props }">
+                    <v-icon color="primary" icon="mdi-office-building" size="small" v-bind="props"></v-icon>
+                  </template>
+                  <span>Shared with department</span>
+                </v-tooltip>
               </span>
             </div>
           </v-list-item-subtitle>
