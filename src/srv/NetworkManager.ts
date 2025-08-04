@@ -3,7 +3,7 @@ import express from 'express';
 import path, {dirname} from 'path';
 import {fileURLToPath} from 'url';
 import cors from 'cors';
-import type {I_DocumentType, I_UserCreation, I_UserEntry, I_UserUpdate} from "../types.ts";
+import type {I_DocumentType, I_UserCreation, I_UserEntry, I_UserUpdate} from "docpouch-client";
 import NeDbWrapper from "./NeDbWrapper.js";
 import winston from "winston";
 import jwt from "jsonwebtoken"

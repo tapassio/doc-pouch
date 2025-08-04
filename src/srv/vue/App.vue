@@ -4,7 +4,6 @@ import DocumentDisplay from "./components/DocumentDisplay.vue";
 import LoginDialog from "./components/LoginDialog.vue";
 import {ref, onMounted, computed, watch} from "vue";
 import DbPouchClient from "docpouch-client";
-// import type {} from "../../types.ts";
 import ImportDatabaseDialog from "./components/ImportDatabaseDialog.vue";
 import UserDisplay from "./components/UserDisplay.vue";
 import StructurePad from "./components/StructurePad.vue";
@@ -19,7 +18,7 @@ import type {
   I_DataStructure,
   I_LoginResponse,
   I_DocumentType
-} from "docpouch-client/dist/types";
+} from "docpouch-client";
 import TypePad from "./components/TypePad.vue";
 import TypeDisplay from "./components/TypeDisplay.vue";
 
@@ -284,7 +283,7 @@ function handleUserUpdate(userID: string, field: string, value: any) {
     return;
   }
 
-  apiClient.updateUser(userID, {[field]: value})
+  apiClient.updateUser(userID, {[field]: value, _id: userID})
       .then(() => {
         successfullySaved()
         fetchData().then(() => {

@@ -1,8 +1,8 @@
 import {Server, Socket} from "socket.io";
-import type {I_Client, I_DocumentEntry, I_WsMessage} from "../types.ts";
+import type {I_DocumentEntry, I_WsMessage, I_EventString} from "docpouch-client";
+import type {I_Client} from "../types.ts";
 import type NetworkManager from "./NetworkManager.ts";
 import jwt from "jsonwebtoken";
-import type {I_EventString} from "../../../docpouch-client/dist/types.js";
 
 export default class IoSocketServer {
     private ioSocket: Server;

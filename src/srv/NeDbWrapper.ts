@@ -8,7 +8,7 @@ import type {
     I_StructureEntry,
     I_UserCreation,
     I_DocumentCreation, I_StructureCreation, I_DocumentCreationOwned, I_DocumentQuery, I_DocumentType
-} from "../types.ts";
+} from "docpouch-client";
 
 
 export default class NeDbWrapper {
