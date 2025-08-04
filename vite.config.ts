@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [vue()],
   build: {
     outDir: resolve(__dirname, 'dist/srv/vue'),
-    emptyOutDir: true
+    emptyOutDir: true,
   },
   publicDir: resolve(__dirname, 'src/srv/vue/public'),
   resolve: {

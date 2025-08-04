@@ -1,5 +1,6 @@
 import {Server, Socket} from "socket.io";
-import type {I_Client, I_WsMessage} from "../types.ts";
+import type {I_DocumentEntry, I_WsMessage, I_EventString} from "docpouch-client";
+import type {I_Client} from "../types.ts";
 import type NetworkManager from "./NetworkManager.ts";
 import jwt from "jsonwebtoken";
 
@@ -67,7 +68,7 @@ export default class IoSocketServer {
             let now = Date.now();
             for (let i = this.wsClientList.length - 1; i >= 0; i--) {
                 const client = this.wsClientList[i];
-                
+
                 if (client.lastPingSent < now - 60000) {
                     client.lastPingSent = now;
                     try {
@@ -76,7 +77,7 @@ export default class IoSocketServer {
                         this.networkManager.logger.error("Error sending ping to client: ", client.socket.id, err);
                     }
                 }
-                
+
                 if (client.lastPongReceived < now - 120000 && client.lastPingSent > client.lastPongReceived) {
                     this.networkManager.logger.warn("Client disconnected due to inactivity:", client.socket.id);
                     try {
@@ -91,7 +92,7 @@ export default class IoSocketServer {
         }, 60000);
     }
 
-    sendEventToUser(sourceID: string | undefined, userID: string, event: string, data?: I_WsMessage) {
+    sendEventToUser(sourceID: string | undefined, userID: string, event: I_EventString, data?: I_WsMessage) {
         this.networkManager.logger.debug(`Attempting to send event '${event}' to userID: ${userID}, sourceID: ${sourceID || 'undefined'}`);
 
         // Debug: Log all clients in the list
@@ -107,14 +108,13 @@ export default class IoSocketServer {
             this.networkManager.logger.debug(`Found ${clients.length} clients for userID: ${userID}`);
             for (let client of clients) {
                 this.sendEventToClient(sourceID, client, event, data);
-                this.sendEventToAdmins(sourceID, event, data);
             }
         } else {
             this.networkManager.logger.warn(`No clients found for userID: ${userID} when trying to send event: ${event}`);
         }
     }
 
-    sendEventToAdmins(sourceID: string | undefined, event: string, data?: I_WsMessage) {
+    sendEventToAdmins(sourceID: string | undefined, event: I_EventString, data?: I_WsMessage) {
         for (const client of this.wsClientList) {
             if (client.isAdmin) {
                 this.sendEventToClient(sourceID, client, event, data);
@@ -122,7 +122,102 @@ export default class IoSocketServer {
         }
     }
 
-    sendEventToClient(sourceID: string | undefined, client: I_Client, event: string, data?: I_WsMessage) {
+    sendEventToAllClients(sourceID: string | undefined, event: I_EventString, data?: I_WsMessage) {
+        this.networkManager.logger.debug(`Sending event '${event}' to all connected clients`);
+        for (const client of this.wsClientList) {
+            this.sendEventToClient(sourceID, client, event, data);
+        }
+    }
+
+
+    async sendEventToDocumentAccessors(sourceID: string | undefined, documentID: string, event: I_EventString, data?: I_WsMessage) {
+        this.networkManager.logger.debug(`Sending event '${event}' for document ${documentID} to users with access`);
+
+        try {
+            // Get the document to check sharing settings
+            const docQuery = await this.networkManager.dataManager.documents.query({_id: documentID});
+
+            if (docQuery.length === 0) {
+                this.networkManager.logger.warn(`Document ${documentID} not found when trying to send event`);
+                return;
+            }
+
+            const document = docQuery[0] as I_DocumentEntry;
+            const ownerID = document.owner;
+
+            // Always send to the document owner's connected clients, excluding the source if specified
+            const ownerClients = this.wsClientList.filter(client =>
+                client.userid === ownerID &&
+                (!sourceID || client.socket.id !== sourceID)
+            );
+
+            for (const client of ownerClients) {
+                this.sendEventToClient(sourceID, client, event, data);
+            }
+
+            // If document is shared with department or group, find users who have access
+            if (document.shareWithDepartment || document.shareWithGroup) {
+                // Get the owner's user info to determine department and group
+                const ownerInfo = await this.networkManager.dataManager.getUserByID(ownerID);
+
+                if (document.shareWithDepartment) {
+                    // Get all users in the same department
+                    try {
+                        const departmentUsers = await this.networkManager.dataManager.getUsersByDepartmentName(ownerInfo.department);
+                        for (const user of departmentUsers) {
+                            // Find all of this user's connected clients, excluding the source
+                            const userClients = this.wsClientList.filter(client =>
+                                client.userid === user._id &&
+                                (!sourceID || client.socket.id !== sourceID)
+                            );
+                            for (const client of userClients) {
+                                this.sendEventToClient(sourceID, client, event, data);
+                            }
+                        }
+                    } catch (error) {
+                        this.networkManager.logger.error(`Error getting department users: ${error}`);
+                    }
+                }
+
+                if (document.shareWithGroup) {
+                    // Get all users in the same group and department
+                    try {
+                        const groupUsers = await this.networkManager.dataManager.getUsersByGroupName(ownerInfo.group, ownerInfo.department);
+                        for (const user of groupUsers) {
+                            if (user._id !== ownerID) { // Skip owner as we've already sent to them
+                                // Find all of this user's connected clients, excluding the source
+                                const userClients = this.wsClientList.filter(client =>
+                                    client.userid === user._id &&
+                                    (!sourceID || client.socket.id !== sourceID)
+                                );
+
+                                for (const client of userClients) {
+                                    this.sendEventToClient(sourceID, client, event, data);
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        this.networkManager.logger.error(`Error getting group users: ${error}`);
+                    }
+                }
+            }
+
+            // Always send to admins, excluding the source if specified
+            const adminClients = this.wsClientList.filter(client =>
+                client.isAdmin &&
+                (!sourceID || client.socket.id !== sourceID)
+            );
+
+            for (const client of adminClients) {
+                this.sendEventToClient(sourceID, client, event, data);
+            }
+
+        } catch (error) {
+            this.networkManager.logger.error(`Error in sendEventToDocumentAccessors: ${error}`);
+        }
+    }
+
+    sendEventToClient(sourceID: string | undefined, client: I_Client, event: I_EventString, data?: I_WsMessage) {
         if (!sourceID || sourceID !== client.socket.id) {
             try {
                 this.ioSocket.to(client.socket.id).emit(event, data);
@@ -165,34 +260,34 @@ export default class IoSocketServer {
                     this.networkManager.logger.error(`Invalid payload in JWT token for socket ${socket.id}`);
                     return next(new Error('Authentication error: Invalid payload'));
                 }
-
                 this.networkManager.logger.debug(`JWT verified successfully for user ${payload.id}, socket ${socket.id}`);
+                this.networkManager.dataManager.getUserByID(payload.id).then(user => {
+                    const client = {
+                        socket: socket,
+                        userid: payload.id,
+                        isAdmin: user.isAdmin,
+                        lastPingSent: Date.now(),
+                        lastPongReceived: Date.now()
+                    };
 
-                const client = {
-                    socket: socket,
-                    userid: payload.id,
-                    isAdmin: payload.isAdmin || false,
-                    lastPingSent: Date.now(),
-                    lastPongReceived: Date.now()
-                };
+                    // Check if this client already exists in the list (by socket ID)
+                    const existingClientIndex = this.wsClientList.findIndex(c => c.socket.id === socket.id);
+                    if (existingClientIndex >= 0) {
+                        this.networkManager.logger.debug(`Replacing existing client in wsClientList at index ${existingClientIndex}`);
+                        this.wsClientList[existingClientIndex] = client;
+                    } else {
+                        this.networkManager.logger.debug(`Adding new client to wsClientList: userID=${payload.id}, socketID=${socket.id}`);
+                        this.wsClientList.push(client);
+                    }
 
-                // Check if this client already exists in the list (by socket ID)
-                const existingClientIndex = this.wsClientList.findIndex(c => c.socket.id === socket.id);
-                if (existingClientIndex >= 0) {
-                    this.networkManager.logger.debug(`Replacing existing client in wsClientList at index ${existingClientIndex}`);
-                    this.wsClientList[existingClientIndex] = client;
-                } else {
-                    this.networkManager.logger.debug(`Adding new client to wsClientList: userID=${payload.id}, socketID=${socket.id}`);
-                    this.wsClientList.push(client);
-                }
+                    // Debug: Log all clients in the list
+                    this.networkManager.logger.debug(`Current wsClientList has ${this.wsClientList.length} clients`);
+                    this.wsClientList.forEach((c, idx) => {
+                        this.networkManager.logger.debug(`Client ${idx}: userID=${c.userid}, socketID=${c.socket.id}`);
+                    });
 
-                // Debug: Log all clients in the list
-                this.networkManager.logger.debug(`Current wsClientList has ${this.wsClientList.length} clients`);
-                this.wsClientList.forEach((c, idx) => {
-                    this.networkManager.logger.debug(`Client ${idx}: userID=${c.userid}, socketID=${c.socket.id}`);
-                });
-
-                next();
+                    next();
+                })
             });
         } catch (error) {
             this.networkManager.logger.error(`Exception in auth middleware for socket ${socket.id}: ${error}`);

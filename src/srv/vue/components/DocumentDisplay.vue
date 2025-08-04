@@ -42,6 +42,14 @@ const isEditing = (path: string[]) => {
   return path.every((segment, index) => segment === editingPath.value[index]);
 };
 
+const updateShareSetting = (setting: string, value: boolean | null) => {
+  if (!props.object) return;
+
+  const updatedObject = JSON.parse(JSON.stringify(props.object));
+  updatedObject[setting] = value;
+  emit('update:object', updatedObject);
+};
+
 // Start editing a value
 const startEditing = (path: string[], value: any) => {
   // Only allow editing primitive values
@@ -418,6 +426,53 @@ const getValueAtPath = (obj: any, path: string[]): any => {
               Editing: {{ getPathString(editingPath) }}
             </span>
           </div>
+
+          <!-- Document Sharing Options -->
+          <div class="d-flex align-center mt-3">
+            <span class="font-weight-medium mr-2">Sharing:</span>
+
+            <!-- Share with Group toggle -->
+            <div class="mr-4 d-flex align-center">
+              <v-tooltip location="top">
+                <template v-slot:activator="{ props: tooltipProps }">
+                  <div class="d-flex align-center" v-bind="tooltipProps">
+                    <span class="mr-2">Share with Group:</span>
+                    <v-switch
+                        :model-value="props.object.shareWithGroup"
+                        class="mt-0 pt-0"
+                        color="primary"
+                        density="compact"
+                        hide-details
+                        @update:model-value="(val) => updateShareSetting('shareWithGroup', val)"
+                    ></v-switch>
+
+                  </div>
+                </template>
+                <span>Share this document with all users in your group</span>
+              </v-tooltip>
+            </div>
+
+
+            <!-- Share with Department toggle -->
+            <div class="d-flex align-center">
+              <v-tooltip location="top">
+                <template v-slot:activator="{ props: tooltipProps }">
+                  <div class="d-flex align-center" v-bind="tooltipProps">
+                    <span class="mr-2">Share with Department:</span>
+                    <v-switch
+                        v-model="props.object.shareWithDepartment"
+                        class="mt-0 pt-0"
+                        color="primary"
+                        density="compact"
+                        hide-details
+                        @update:model-value="(val) => updateShareSetting('shareWithDepartment', val)"
+                    ></v-switch>
+                  </div>
+                </template>
+                <span>Share this document with all users in your department</span>
+              </v-tooltip>
+            </div>
+          </div>
         </div>
       </v-sheet>
 
@@ -699,23 +754,6 @@ const getValueAtPath = (obj: any, path: string[]): any => {
 
 .content-item:hover {
   background-color: rgba(0, 0, 0, 0.03);
-}
-
-.type-string {
-  color: #008000;
-}
-
-.type-number {
-  color: #0000FF;
-}
-
-.type-boolean {
-  color: #FF00FF;
-}
-
-.type-undefined, .type-object {
-  color: #999;
-  font-style: italic;
 }
 
 .cursor-pointer {

@@ -18,7 +18,7 @@ if (!fs.existsSync(dbPath)) {
 }
 
 let winstonLogger = winston.createLogger({
-    level: 'info',
+    level: 'debug',
     defaultMeta: { service: 'user-service' },
     format: winston.format.combine(
         winston.format.timestamp(),
