@@ -122,7 +122,7 @@ export default class NetworkManager {
                                 this.logger.info("Creating JWT token");
                                 let token = jwt.sign({id: user._id}, JWTOptions.secret, {
                                     algorithm: "HS512",
-                                    expiresIn: "4h",
+                                    expiresIn: "24h",
                                     issuer: "DocPouch"
                                 });
                                 this.logger.debug("Sending successful response");
