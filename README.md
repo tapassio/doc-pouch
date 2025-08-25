@@ -11,7 +11,7 @@ DocPouch is primarily intended for:
 - **Testing environments**: Perfect for testing applications without setting up complex database systems
 - **Secure internal environments**: Suitable for internal applications where security is not a major concern
 
-> **Note**: DocPouch is not designed for high-performance production environments or applications requiring advanced 
+> **Note**: DocPouch is not designed for high-performance production environments or applications requiring advanced
 > security features. The database is file and text-based, prioritizing simplicity and a small footprint over performance.
 
 DocPouch handles users, documents and document structures.
@@ -19,7 +19,8 @@ DocPouch handles users, documents and document structures.
 A user entry describes a system user including the name, password, role, and email (if provided)
 
 ### Documents
-Documents store the main data. They can be all sort of data objects as long as they can be express in JSON. They can 
+
+Documents store the main data. They can be all sort of data objects as long as they can be express in JSON. They can
 follow their own structure or follow an existing document structure.
 
 ### Document Structures
@@ -128,14 +129,31 @@ DocPouch provides a RESTful API with the following main endpoints:
 - `PATCH /docs/update/{documentID}` - Update an existing document
 - `DELETE /docs/remove/{documentID}` - Remove a document
 
+### Document Type Management
+
+- `GET /types/list` - Get all document types
+- `POST /types/create` - Create a new document type
+- `PATCH /types/update/{typeID}` - Update a document type
+- `DELETE /types/remove/{typeID}` - Remove a document type
+
 ### Data Structure Management
 - `GET /structures/list` - Get all data structures
 - `POST /structures/create` - Create a new data structure (admin only)
 - `PATCH /structures/update/{structureID}` - Update an existing data structure (admin only)
 - `DELETE /structures/remove/{structureID}` - Remove a data structure (admin only)
 
-All API endpoints (except login) require authentication using JWT tokens. You can find an openAPI specification 
-in the `docPouch.yml` file
+All API endpoints (except login) require authentication using JWT tokens. You can find an OpenAPI specification
+in the `docPouch.yml` file.
+
+> **Note**: API endpoints use standard HTTP response codes: `201` (Created), `204` (No Content), `403` (Forbidden), etc.
+
+## Real-Time Updates
+
+DocPouch supports WebSocket-based real-time updates using Socket.io. Events are triggered for documents, users,
+structures, and types.
+
+To simplify integration, use the official client library: [docpouch-client](https://github.com/BFH-JTF/docpouch-client),
+which handles authentication, connection, and event handling.
 
 ## Frontend UI
 
