@@ -80,8 +80,10 @@ export default class NetworkManager {
     }
 
     private initializeExpress(): void {
-        let myDirname = getCurrentDirname();
-        this.expressApp.use(express.static(path.join(myDirname, 'vue')));
+        const vuePath = path.resolve(process.cwd(), 'dist/srv/vue');
+        this.logger.info(`Serving static files from: ${vuePath}`);
+
+        this.expressApp.use(express.static(vuePath));
         this.expressApp.use(express.json());
         this.expressApp.use(cors(this.corsOptions));
         this.expressApp.disable('etag'); // Disable ETag header to prevent caching of responses
@@ -592,6 +594,23 @@ export default class NetworkManager {
                 res.status(500).json({error: "Error checking admin status"});
             });
         });
+
+        this.expressApp.use((req, res, next) => {
+            // Skip for API routes that are already handled
+            if (req.path.startsWith('/api') ||
+                req.path.startsWith('/users') ||
+                req.path.startsWith('/docs') ||
+                req.path.startsWith('/types') ||
+                req.path.startsWith('/structures') ||
+                req.path.startsWith('/database')) {
+                return next();
+            }
+
+            // For all other routes, serve the index.html file
+            res.sendFile(path.join(vuePath, 'index.html'));
+        });
+
+
     }
 
     private authenticateJWT = (req: Request, res: Response, next: NextFunction) => {
