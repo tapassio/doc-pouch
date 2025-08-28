@@ -27,7 +27,7 @@ function getCurrentDirname(): string {
 
     // In ESM, use import.meta.url but only via eval so CJS parser doesn't choke
     try {
-        const metaUrl = (0, eval)('import.meta.url') as string;
+        const metaUrl = eval('import.meta.url') as string;
         return dirname(fileURLToPath(metaUrl));
     } catch {
         return process.cwd();
@@ -161,7 +161,7 @@ export default class NetworkManager {
         this.expressApp.patch("/users/update/:userID", this.authenticateJWT, (req: Request, res: Response) => {
             const validatedObject = this.validator.getValidatedObject("userUpdate", req.body);
 
-            if (validatedObject !== false) {
+            if (validatedObject !== false && req.params.userID !== undefined) {
                 const userID = req.params.userID;
                 const checkPermission = async () => {
                     if (req.userid === userID && !("isAdmin" in validatedObject)) {
@@ -212,7 +212,7 @@ export default class NetworkManager {
             this.dataManager.isAdmin(req.userid).then((isAdmin: boolean) => {
                 if (!isAdmin)
                     return res.status(401).json({error: "Not authorized to remove this user"});
-                else {
+                else if (req.params.userID !== undefined) {
                     this.dataManager.removeUser(req.params.userID).then(() => {
                         this.socketServer.sendEventToAdmins(req.socketID, "removedUser", {removedID: req.params.userID})
                         res.status(200).json({message: "User has been successfully removed"});
@@ -278,10 +278,10 @@ export default class NetworkManager {
         });
 
         this.expressApp.patch("/docs/update/:documentID", this.authenticateJWT, (req, res) => {
-            if (this.validator.getValidatedObject("documentUpdate", req.body)) {
+            if (this.validator.getValidatedObject("documentUpdate", req.body) && req.params.documentID !== undefined) {
                 this.dataManager.updateDocument(req.params.documentID, req.body, req.userid)
                     .then((numUpdated) => {
-                        if (numUpdated > 0) {
+                        if (numUpdated > 0 && req.params.documentID !== undefined) {
                             req.body._id = req.params.documentID;
                             this.socketServer.sendEventToDocumentAccessors(req.socketID, req.params.documentID, "changedDocument", {changedDocument: req.body});
                             res.status(200).json({message: "Document updated successfully"});
@@ -298,21 +298,25 @@ export default class NetworkManager {
         });
 
         this.expressApp.delete("/docs/remove/:documentID", this.authenticateJWT, (req, res) => {
-            this.socketServer.sendEventToDocumentAccessors(req.socketID, req.params.documentID, "removedDocument", {removedID: req.params.documentID}).then(() => {
-                this.dataManager.removeDocument(req.params.documentID, req.userid)
-                    .then((numRemoved) => {
-                        if (numRemoved > 0) {
-                            res.status(200).json({message: "Document removed successfully"});
+            if (req.params.documentID !== undefined) {
+                this.socketServer.sendEventToDocumentAccessors(req.socketID, req.params.documentID, "removedDocument", {removedID: req.params.documentID}).then(() => {
+                    if (req.params.documentID !== undefined) {
+                        this.dataManager.removeDocument(req.params.documentID, req.userid)
+                            .then((numRemoved) => {
+                                if (numRemoved > 0) {
+                                    res.status(200).json({message: "Document removed successfully"});
 
-                            this.logger.info(`Document removed: ${req.params.documentID}`);
-                        } else {
-                            res.status(404).json({error: "Document not found"});
-                        }
-                    })
-                    .catch((error) => {
-                        res.status(error).json({error: error});
-                    });
-            })
+                                    this.logger.info(`Document removed: ${req.params.documentID}`);
+                                } else {
+                                    res.status(404).json({error: "Document not found"});
+                                }
+                            })
+                            .catch((error) => {
+                                res.status(error).json({error: error});
+                            });
+                    }
+                })
+            }
         });
 
         // Structure endpoints with access control
@@ -347,7 +351,7 @@ export default class NetworkManager {
         });
 
         this.expressApp.patch("/structures/update/:structureID", this.authenticateJWT, (req, res) => {
-            if (this.validator.getValidatedObject("structureUpdate", req.body)) {
+            if (this.validator.getValidatedObject("structureUpdate", req.body) && req.params.structureID !== undefined) {
                 const structureID = req.params.structureID;
                 this.dataManager.updateStructure(structureID, req.body, req.userid)
                     .then((numUpdated) => {
@@ -370,19 +374,21 @@ export default class NetworkManager {
 
         this.expressApp.delete("/structures/remove/:structureID", this.authenticateJWT, (req, res) => {
             const structureID = req.params.structureID;
-            this.dataManager.removeStructure(structureID, req.userid)
-                .then((numRemoved) => {
-                    if (numRemoved > 0) {
-                        res.status(200).json({message: "Structure removed successfully"});
-                        this.socketServer.sendEventToAllClients(req.socketID, "removedStructure", {removedID: structureID});
-                        this.logger.info("Structure removed:", structureID);
-                    } else {
-                        res.status(404).json({error: "Structure not found"});
-                    }
-                })
-                .catch((error) => {
-                    res.status(error).json({error: error.message || error});
-                });
+            if (structureID !== undefined) {
+                this.dataManager.removeStructure(structureID, req.userid)
+                    .then((numRemoved) => {
+                        if (numRemoved > 0) {
+                            res.status(200).json({message: "Structure removed successfully"});
+                            this.socketServer.sendEventToAllClients(req.socketID, "removedStructure", {removedID: structureID});
+                            this.logger.info("Structure removed:", structureID);
+                        } else {
+                            res.status(404).json({error: "Structure not found"});
+                        }
+                    })
+                    .catch((error) => {
+                        res.status(error).json({error: error.message || error});
+                    });
+            }
         });
 
         this.expressApp.post("/types/write", this.authenticateJWT, (req, res) => {
@@ -413,19 +419,21 @@ export default class NetworkManager {
 
         this.expressApp.delete("/types/remove/:documentTypeID", this.authenticateJWT, (req, res) => {
             const documentTypeID = req.params.documentTypeID;
-            this.dataManager.removeDocumentType(documentTypeID, req.userid)
-                .then((numRemoved) => {
-                    if (numRemoved > 0) {
-                        res.status(200).json({message: "Document type removed successfully"});
-                        this.socketServer.sendEventToAllClients(req.socketID, "removedType", {removedID: documentTypeID});
-                        this.logger.info("Document type removed:", documentTypeID);
-                    } else {
-                        res.status(404).json({error: "Document type not found"});
-                    }
-                })
-                .catch((error) => {
-                    res.status(error).json({error: error});
-                });
+            if (documentTypeID !== undefined) {
+                this.dataManager.removeDocumentType(documentTypeID, req.userid)
+                    .then((numRemoved) => {
+                        if (numRemoved > 0) {
+                            res.status(200).json({message: "Document type removed successfully"});
+                            this.socketServer.sendEventToAllClients(req.socketID, "removedType", {removedID: documentTypeID});
+                            this.logger.info("Document type removed:", documentTypeID);
+                        } else {
+                            res.status(404).json({error: "Document type not found"});
+                        }
+                    })
+                    .catch((error) => {
+                        res.status(error).json({error: error});
+                    });
+            }
         });
 
         // Database export endpoint
