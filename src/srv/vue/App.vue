@@ -455,18 +455,38 @@ async function handleExportDatabase() {
           </v-switch>
         </div>
 
-        <v-btn v-if="isLoggedIn" class="mr-2" color="white" variant="text" @click="handleExportDatabase">
-          <v-icon start>mdi-database-export</v-icon>
-          Export Database
-        </v-btn>
-        <v-btn v-if="isLoggedIn" class="mr-2" color="white" variant="text" @click="showImportDialog = true">
-          <v-icon start>mdi-database-import</v-icon>
-          Import Database
-        </v-btn>
-        <v-btn v-if="isLoggedIn" @click="handleLogout" variant="text" color="white">
-          <v-icon start>mdi-logout</v-icon>
-          Logout
-        </v-btn>
+        <!-- Replaced buttons with a dropdown menu -->
+        <v-menu :close-on-content-click="false" location="end">
+          <template v-slot:activator="{ props }">
+            <v-btn v-if="isLoggedIn" class="mr-2" color="white" v-bind="props" variant="text">
+              <v-icon start>mdi-dots-vertical</v-icon>
+              Menu
+            </v-btn>
+          </template>
+
+          <v-list>
+            <v-list-item @click="handleExportDatabase">
+              <v-list-item-icon>
+                <v-icon>mdi-database-export</v-icon>
+              </v-list-item-icon>
+              <v-list-item-title>Export Database</v-list-item-title>
+            </v-list-item>
+
+            <v-list-item @click="showImportDialog = true">
+              <v-list-item-icon>
+                <v-icon>mdi-database-import</v-icon>
+              </v-list-item-icon>
+              <v-list-item-title>Import Database</v-list-item-title>
+            </v-list-item>
+
+            <v-list-item @click="handleLogout">
+              <v-list-item-icon>
+                <v-icon>mdi-logout</v-icon>
+              </v-list-item-icon>
+              <v-list-item-title>Logout</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
       </v-app-bar>
       <v-alert v-if="isLoggedIn" type="info" variant="tonal" closable class="ma-4">
         <strong>Welcome to DocPouch Administration</strong> — an open-source document management system that allows you

@@ -17,23 +17,6 @@ import archiver from "archiver";
 import AdmZip from "adm-zip";
 import {JWTOptions} from "./webTokenStuff.js";
 
-function getCurrentDirname(): string {
-    try {
-        // @ts-ignore
-        if (typeof __dirname !== 'undefined') return __dirname;
-    } catch {
-        // ignore
-    }
-
-    // In ESM, use import.meta.url but only via eval so CJS parser doesn't choke
-    try {
-        const metaUrl = eval('import.meta.url') as string;
-        return dirname(fileURLToPath(metaUrl));
-    } catch {
-        return process.cwd();
-    }
-}
-
 export default class NetworkManager {
     corsOptions: any;
     port: number;
@@ -144,7 +127,7 @@ export default class NetworkManager {
                                     this.logger.info("Creating JWT token");
                                     let token = jwt.sign({id: user._id}, JWTOptions.secret, JWTOptions.settings as jwt.SignOptions);
                                     this.logger.debug("Sending successful response");
-                                    res.json({token: token, isAdmin: user.isAdmin || false});
+                                    res.json({token: token, isAdmin: user.isAdmin || false, userName: user.name});
                                 } else {
                                     res.status(401).json({error: "Invalid user or password"});
                                 }
