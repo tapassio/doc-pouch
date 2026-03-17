@@ -21,6 +21,9 @@ const typeFilter = ref('');
 const subtypeFilter = ref('');
 const ownerFilter = ref('');
 
+const showHint = ref(false);
+
+
 const showDeleteConfirmDialog = ref(false);
 const documentToDelete = ref<string | null>(null);
 
@@ -157,6 +160,8 @@ const clearFilters = () => {
 const hasActiveFilters = computed(() => {
   return titleFilter.value || typeFilter.value || subtypeFilter.value || ownerFilter.value;
 });
+
+
 </script>
 
 <template>
@@ -294,8 +299,26 @@ const hasActiveFilters = computed(() => {
         <v-list-item v-if="documents.length === 0 && !hasActiveFilters && props.documentList?.length === 0">
           <v-list-item-title class="text-center text-grey">
             <v-icon icon="mdi-file-plus" class="mr-2"></v-icon>
-            No documents available. Fix: Click "New" to create the first document.
+            No documents available.
           </v-list-item-title>
+
+          <div class="text-center mt-2">
+            <v-btn
+                color="primary"
+                prepend-icon="mdi-plus"
+                @click="showHint = true"
+            >
+              New
+            </v-btn>
+          </div>
+
+          <v-alert
+              v-if="showHint"
+              type="info"
+              class="mt-2"
+          >
+            This action needs an additional editor!
+          </v-alert>
         </v-list-item>
       </v-list>
     </div>
