@@ -1,4 +1,4 @@
-import Datastore from 'nedb';
+import Datastore from '@seald-io/nedb';
 import winston, {error} from "winston";
 import fs from "fs";
 import bcrypt from "bcrypt"
@@ -679,15 +679,15 @@ export default class NeDbWrapper {
 }
 
 class CustomStore {
-    datastore: Datastore;
+    datastore: any;
     name: string;
     description: string;
 
     constructor(filename: string | undefined, name: string, description: string) {
         if (!filename)
-            this.datastore = new Datastore({inMemoryOnly: true, autoload: true});
+            this.datastore = new (Datastore as any)({inMemoryOnly: true, autoload: true});
         else
-            this.datastore = new Datastore({filename: filename, autoload: true});
+            this.datastore = new (Datastore as any)({filename: filename, autoload: true});
         this.name = name;
         this.description = description;
     }
