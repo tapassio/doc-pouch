@@ -294,7 +294,7 @@ const hasActiveFilters = computed(() => {
         <v-list-item v-if="documents.length === 0 && !hasActiveFilters && props.documentList?.length === 0">
           <v-list-item-title class="text-center text-grey">
             <v-icon icon="mdi-file-plus" class="mr-2"></v-icon>
-            No documents available. Click "New" to create the first document.
+            No documents available. Fix: Click "New" to create the first document.
           </v-list-item-title>
         </v-list-item>
       </v-list>
