@@ -148,54 +148,54 @@ export default class SchemaValidator {
     }
 
     getValidatedObject(template: string, userInput: object): object | false {
-    try {
-        let res: object;
-        switch (template) {
-            case "userCreation":
-                res = this.userCreationSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "userLogin":
-                res = this.userLoginSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "userUpdate":
-                res = this.userUpdateSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "documentCreation":
-                res = this.documentCreationSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "documentUpdate":
-                res = this.documentUpdateSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "documentFetch":
-                res = this.documentFetchSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "structureCreation":
-                res = this.structureCreationSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "structureUpdate":
-                res = this.structureUpdateSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
-                break;
-            case "typeCreation":
-                res = this.typeCreationSchema.validateSync(userInput, {abortEarly: false, stripUnknown: true});
-                break;
-            default:
-                const errorMsg = `Unknown schema template: ${template}`;
-                this.logger.error(errorMsg);
-                return false;
+        try {
+            let res: object;
+            switch (template) {
+                case "userCreation":
+                    res = this.userCreationSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "userLogin":
+                    res = this.userLoginSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "userUpdate":
+                    res = this.userUpdateSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "documentCreation":
+                    res = this.documentCreationSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "documentUpdate":
+                    res = this.documentUpdateSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "documentFetch":
+                    res = this.documentFetchSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "structureCreation":
+                    res = this.structureCreationSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "structureUpdate":
+                    res = this.structureUpdateSchema.validateSync(userInput, { abortEarly: false, stripUnknown: true });
+                    break;
+                case "typeCreation":
+                    res = this.typeCreationSchema.validateSync(userInput, {abortEarly: false, stripUnknown: true});
+                    break;
+                default:
+                    const errorMsg = `Unknown schema template: ${template}`;
+                    this.logger.error(errorMsg);
+                    return false;
+            }
+
+            this.logger.debug(`Validation successful for schema: ${template}`);
+
+            return res;
         }
+        catch (error: any) {
+            this.logger.error(`Validation error for schema: ${template}`, {
+                error: error.message,
+                errors: error.errors,
+                inputFields: Object.keys(userInput)
+            });
 
-        this.logger.debug(`Validation successful for schema: ${template}`);
-
-        return res;
+            return false;
+        }
     }
-    catch (error: any) {
-        this.logger.error(`Validation error for schema: ${template}`, { 
-            error: error.message,
-            errors: error.errors,
-            inputFields: Object.keys(userInput)
-        });
-
-        return false;
-    }
-}
 }
